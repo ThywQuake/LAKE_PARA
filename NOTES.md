@@ -343,3 +343,15 @@ dhwfsoil`) is transcribed but not yet probe-validated.
   velocities (u2 ~ 1e-5 m/s), negligible for the temperature acceptance.
 - Test: `tests/test_m3_momentum.py`; suite 29 passed.
 - `K_EPSILON` still needs a probe validation; then `step.py`.
+
+## M3: soil bathymetry scaffold (unvalidated)
+
+- Added `bathym.soil_bathymetry` (area_int/area_half/itop/dzSL/ibot/icent/
+  dzSLc from `BATHYMETRY`).  Import/smoke only.
+- Driving `soilcolstemp` + `laterheat` from `init_state` and this geometry
+  currently gives `soilflux` values of order 1e20 in side columns 2-4 and
+  `lsh%water` differs from the probe by a factor ~2, so the geometry /
+  `tsurfsoilcol` wiring is **not yet correct**.  The soil subagent's
+  bit-exact validation used the probe's `BATHY_902_out`/`LAKE_exit`, not this
+  function; the mismatch is in the newly written geometry or in the
+  `SoilState` initialization, not in the validated heat coefficients.

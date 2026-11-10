@@ -86,3 +86,57 @@ def bathymetry(params, grid: Grid, state, pressure):
     return Bathym(z_full=z_full, z_half=z_half, preswat=preswat,
                   area_int=area_int, area_half=area_half, vol=vol, botar=botar,
                   Lx=Lx, Ly=Ly, rad_int=rad_int, Lx_half=Lx_half, Ly_half=Ly_half)
+
+
+def soil_bathymetry(params, grid, state, l=0):
+    """Soil-column bathymetry from `BATHYMETRY` (bathym_mod.f90:108-185).
+
+    Returns a 1-based list of `soil.Bathym` (index 0 unused) with
+    `area_int(1:nsoilcols+1)`, `area_half(1:nsoilcols)`, `itop/dzSL/ibot/
+    icent/dzSLc`, plus the water/ice bathymetry lists used by `SoilGeometry`.
+    """
+    from ..grid import interp_profile, zsoilcols
+    from .soil import Bathym
+
+    h1 = float(np.asarray(state.h1)[l])
+    ls1 = float(np.asarray(state.ls1)[l])
+    n = int(params.morphometry_len[l])
+    if n == 0 or params.morphometry[l, 0, 1] < 0.0:
+        return None
+    table = params.morphometry[l, :n, :]
+    zsc = zsoilcols(h1, table, grid, params.nsoilcols)
+    if zsc is None:
+        return None
+    ncols = params.nsoilcols
+    work3 = 0.5 * (zsc[:-1] + zsc[1:])
+    area_int = interp_profile(table[:, 0], table[:, 1], zsc[None, :])[0]
+    area_half = interp_profile(table[:, 0], table[:, 1], work3[None, :])[0]
+
+    b = [Bathym() for _ in range(ncols + 2)]
+    for i in range(1, ncols + 2):
+        b[i].area_int = float(area_int[i - 1])
+    for i in range(1, ncols + 1):
+        b[i].area_half = float(area_half[i - 1])
+
+    z_full = grid.dzeta_int * h1
+    z_half = grid.dzeta_05int * h1
+    dz = -float(np.max(table[:, 0])) + h1 + ls1
+    for i in range(2, ncols + 1):
+        for j in range(params.M, 0, -1):
+            if zsc[i - 1] + dz > z_full[j - 1] and zsc[i - 1] + dz <= z_full[j]:
+                b[i].itop = j
+                b[i].dzSL = float(work3[i - 1] + dz - z_full[j - 1])
+    b[1].itop = 1
+    b[1].dzSL = float(work3[0] + dz - z_full[0])
+    for i in range(2, ncols + 1):
+        for j in range(1, params.M + 1):
+            if zsc[i - 1] + dz > z_full[j - 1] and zsc[i - 1] + dz <= z_full[j]:
+                b[i - 1].ibot = j
+    b[ncols].ibot = params.M + 1
+    for i in range(1, ncols):
+        b[i].icent = 1
+        for j in range(1, params.M):
+            if work3[i - 1] + dz > z_half[j - 1] and work3[i - 1] + dz <= z_half[j]:
+                b[i].icent = j + 1
+                b[i].dzSLc = float(work3[i - 1] + dz - z_half[j - 1])
+    return b
