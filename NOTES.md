@@ -334,3 +334,12 @@ after `SOILCOLSTEMP` are all **bit-exact (0.0)**.  The last 2e-10 residual was
 `state.py`'s `- 0.01`, which INIT_VAR treats as a default-real literal; fixed
 to `- float(np.float32(0.01))`.  Moisture/phase-change (`wl3/wl4/wi2/
 dhwfsoil`) is transcribed but not yet probe-validated.
+
+## M3: momentum probe validation
+
+- `MOM_1105_in/out` probe at the case-1 `MOMENTUM_SOLVER` call.  Driving the
+  port from the probe inputs gives: `u2` <= 9.4e-9 m/s, `v2` <= 1.6e-6 m/s,
+  `k2` **exact**, `Ri` <= 2.4e-6.  The residual is in the tiny near-surface
+  velocities (u2 ~ 1e-5 m/s), negligible for the temperature acceptance.
+- Test: `tests/test_m3_momentum.py`; suite 29 passed.
+- `K_EPSILON` still needs a probe validation; then `step.py`.
