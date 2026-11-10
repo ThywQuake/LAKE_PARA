@@ -634,3 +634,18 @@ pressure.  `step.py` was passing `preswat` (~1e5), producing densities
   not K_EPSILON.
 
 Next: 60-day `summer60d` run and comparison.
+
+## M3: 3.33-day k-epsilon structure drift
+
+At step 14400 (3.33 days) the `summer60d` reference probe shows:
+
+- `Tw1` max diff 0.119 K (4 m), `Tsoil1` 0.039 K;
+- `lamw` profiles are qualitatively different:
+  ours  [1185, 85, 40, 49] W/(m K),
+  ref   [ 323, 986, 1074, 743].
+  Our surface mixing is too strong and the deeper thermocline mixing too weak.
+- `E1`/`eps1` already differ (2.6e-5 / 5e-7).
+
+The 1-day case is still 0.010 K; the divergence develops between day 1 and
+day 3.3.  Next: compare `K_EPSILON` at days 1/2/3 (probe `KE_in/out`) to find
+the first diverging field (likely `u1/u2`, `k2`, or `eps1` carry).
