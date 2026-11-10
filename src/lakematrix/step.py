@@ -419,3 +419,25 @@ def run_case1(params, grid, rows, nsteps=180, l=0, callback=None, store=True):
         if callback is not None:
             callback(n, ss, r)
     return ss, out
+
+
+def build_ice_state(ss, params, grid):
+    """Allocate/fill an `IceState` from the current water/soil state (M4)."""
+    from .physics.ice import ice_properties, make_ice_state
+
+    st = make_ice_state(params.M, params.Mice, params.ns, 100,
+                        geom=ss.soil_geom, isoilcol=params.nsoilcols,
+                        nmeltpoint=int(np.atleast_1d(params.nmeltpoint)[0]),
+                        soilbotflx=float(np.atleast_1d(params.soilbotflx)[0]))
+    st.Ti1[1:] = ss.state.Ti1[0]
+    st.Ti2[1:] = ss.state.Ti1[0]
+    st.Tis1[1:] = ss.state.Tis1[0]
+    st.Tis2[1:] = ss.state.Tis1[0]
+    st.Tw1[1:] = ss.state.Tw1[0]
+    st.Tw2[1:] = ss.state.Tw1[0]
+    st.lamw[1:] = ss.state.lamw[0]
+    st.h1 = float(ss.state.h1[0])
+    st.l1 = float(ss.state.l1[0])
+    st.ls1 = float(ss.state.ls1[0])
+    ice_properties(st)
+    return st
