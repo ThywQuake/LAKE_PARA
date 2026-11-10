@@ -44,6 +44,7 @@ class StepState:
     eflux0_kinem: float = 0.0
     buo: float = 0.0
     lsh: object = None
+    bathym: object = None
 
 
 def _zsoil_geom(params, grid, l, st, bathym):
@@ -93,7 +94,7 @@ def build_step_state(params, grid, l=0):
     soil_cond_heat_coef(soil, sp, is_=params.nsoilcols)
 
     row = water_dens_ts(np.r_[0, st.Tw1[l]], np.r_[0, st.Sal1[l]],
-                        bathym.preswat[l])
+                        np.r_[0, bathym.preswat[l]])
     mom_params = MomentumParams(
         M=params.M, ddz=grid.ddz, ddz05=grid.ddz05,
         dzeta_int=grid.dzeta_int, dzeta_05int=grid.dzeta_05int,
@@ -153,4 +154,84 @@ def build_step_state(params, grid, l=0):
     _, integr = rad_update(extinct, grid.ddz05[:params.M] * h1, flux0)
     return StepState(st, sp, soil, geom, mom_params, mom,
                      KEpsilonParams(M=M), ke, np.asarray(integr),
-                     np.asarray(flux0))
+                     np.asarray(flux0), bathym=bathym)
+
+
+def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
+    """Case-1 chain through T_SOLVER (diagnostic integration helper)."""
+    import numpy as np
+    from .forcing import at_time
+    from .physics.density import water_dens_ts
+    from .physics.surface import (WaterSurfaceContext, heatbalance_water,
+                                  radbalance, surf_char)
+
+    st = ss.state
+    dt = params.dt
+    f = at_time(rows, nstep * dt, interval=float(np.atleast_1d(params.interval)[0]))
+    tempair, pressure, longwave, shortwave = f[0] - C.Kelvin0, f[1], f[2], f[3]
+    uwind, vwind, humair, precip = f[4], f[5], f[6], f[7]
+    hour = float(np.atleast_1d(params.hour0)[0]) + nstep * dt / 3600.0
+    year = int(np.atleast_1d(params.year0)[0])
+    month = int(np.atleast_1d(params.month0)[0])
+    day = int(np.atleast_1d(params.day0)[0])
+    phi = float(np.atleast_1d(params.phi)[l])
+    fetch = float(np.atleast_1d(params.fetch)[l])
+    sc = surf_char(4, year, month, day, hour, phi, fetch, uwind, 1.0e-2,
+                   int(np.atleast_1d(params.extwat)[l] * 0 + 1))
+    albedo, albedo_lw, emis = sc["albedo"], sc["albedo_lw"], sc["emissivity"]
+
+    # shortwave radiation in the water column
+    Erad = shortwave * (1.0 - albedo)
+    flux0 = np.asarray(FRACBANDS) * Erad
+    M = params.M
+    extinct = np.empty((M, 4))
+    extinct[:, 0] = 3.13
+    extinct[:, 1] = float(np.atleast_1d(params.extwat)[l])
+    extinct[:, 2] = 1.73
+    extinct[:, 3] = 1.087e3
+    _, integr = rad_update(extinct, grid.ddz05[:M] * float(st.h1[l]), flux0)
+
+    # water-depth increments use the previous step's latent heat flux
+    dhwp = precip * dt
+    dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
+    dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
+    dhw0 = dhwp + dhwe
+
+    # soil columns at the current water temperature
+    ss.soil.Tw1 = np.r_[0, st.Tw1[l]]
+    ss.soil.Ti1 = np.r_[0, st.Ti1[l]]
+    ss.soil.Tis1 = np.r_[0, st.Tis1[l]]
+    ss.soil.h1 = float(st.h1[l])
+    ss.soil.pressure = pressure
+    soil_cond_heat_coef(ss.soil, ss.soil_params, is_=params.nsoilcols)
+    ss.soil = soilcolstemp(ss.soil, ss.soil_params, dt)
+    lsh = laterheat(ss.soil, ss.soil_params, ss.soil.soilflux, onlywater=True)
+
+    Tw1 = np.r_[0, st.Tw1[l]]
+    Tsoil1 = ss.soil.Tsoil1
+    ctx = WaterSurfaceContext(
+        Tw1=Tw1, Tsoil1=Tsoil1, lamw=np.r_[0, st.lamw[l]],
+        area_int=np.r_[0, ss.bathym.area_int[l]],
+        area_half=np.r_[0, ss.bathym.area_half[l]], h1=float(st.h1[l]),
+        ddz=np.r_[0, grid.ddz], dhw=dhw, dhw0=dhw0,
+        PEMF=np.zeros(M + 2), pt_down_f=np.zeros(M + 2),
+        lamsoil=ss.soil.lamsoil, csoil=ss.soil.csoil,
+        rosoil=ss.soil.rosoil, dzs=ss.soil_params.dzs,
+        radwater_integr=np.asarray(integr),
+        lsh_water=np.r_[0, lsh.water[1:]],
+        dzeta_int=np.r_[0, grid.dzeta_int], ddz05=grid.ddz05,
+        M=M, ns=params.ns, isoilcol=params.nsoilcols, dt=dt,
+        fetch=fetch, uwind=uwind, vwind=vwind, u=0.0, v=0.0,
+        tempair=tempair, pressure=pressure, humair=humair, zref=2.0,
+        roughness=sc["roughness"], relhums=sc["relhums"], aM=sc["aM"],
+        bM=sc["bM"], l1=0.0, longwave=longwave, shortwave=shortwave,
+        netrad=-1.0, cloud=-1.0, albedo=albedo, albedo_lw=albedo_lw,
+        emissivity=emis)
+
+    def fn(t):
+        return heatbalance_water(t, ctx)
+
+    r = t_solver(fn, nstep, 4, 0, 0.0)
+    return dict(Tsurf3=r["Tsurf3"], state=r["state"], iter=r["iter"],
+                Bal3=r["Bal3"], dhw=dhw, dhw0=dhw0, integr=integr, lsh=lsh,
+                sc=sc, f=f)

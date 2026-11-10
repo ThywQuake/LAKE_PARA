@@ -443,3 +443,17 @@ This is the last major physics module of case 1.  Next: the full `step.py`
 - `step_case1` is not written yet; the next step is to wire
   `BATHYMETRY → RAD_UPDATE → DENSITY → MOMENTUM → SOIL → T_SOLVER → S_DIFF →
   K_EPSILON → TURB_SCALES → layers` and compare probe step 1 → step 2.
+
+## M3: one-step chain through T_SOLVER matches the probe
+
+`step.step_case1_to_solver` wires BATHYMETRY → RAD_UPDATE → SOIL → T_SOLVER.
+Two forcing details were fixed:
+
+- the ASCII `tempair` column is **Kelvin**; `SENSLATMOM_FLUXES` expects Celsius,
+  so subtract `C.Kelvin0`;
+- step 1 uses `at_time(rows, nstep*dt)`, not `(nstep+1)*dt` (the probe step-1
+  forcing is at 20 s).
+
+Result: `Tsurf3 = 24.96465085110656` (probe 24.96465085113388, diff 2.7e-11)
+and `Bal3 = -0.1806500354` (probe -0.1806484678).  Test
+`tests/test_m3_step.py`; suite **32 passed**.
