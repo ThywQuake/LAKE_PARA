@@ -1,0 +1,40 @@
+# Probe steps for the reference cases (M0.4).
+#
+# The Fortran model advances one step per 20 s.  `nstep` and the output hour
+# are related by nstep = 180 * hours_since_start (the first output row is
+# 2016-08-01 04:00, hours = 1, nstep = 180).  Verified with the probe:
+# Tw1(1) at nstep 180 equals the `water_temp` output at depth 0 at 04:00.
+#
+# The events below were read from the 425-day testlake run with `tribheat 0`
+# (scratch/m0.4/thermo/full425d).  The `layers` columns used:
+#   5 hours since start, 6 water thickness, 15 ice thickness, 16 snow thickness.
+
+[summer]
+step = 1620                 # 2016-08-01 12:00, case 1, no ice
+case = 1
+
+[ice_formation]
+step = 460620               # first output row with ice (0.0131 m), hours 2559
+case = 2
+
+[under_ice]
+step = 720000               # hours 4000, winter, ice present
+case = 2
+
+[snow]
+step = 545580               # first output row with snow (0.0085 m), hours 3031
+case = 2
+
+[ice_melt]
+step = 1070460              # last output row with ice, hours 5947
+case = 2
+
+[no_ice_after_melt]
+step = 1070640              # first output row without ice, hours 5948
+case = 1
+
+# Filled in after the shallow425d reference run if it reaches layer_case 3
+# (water thickness 0, ice > 0).  The full425d run has no such row.
+# [case3]
+# step = ...
+# case = 3

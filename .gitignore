@@ -7,11 +7,11 @@ __pycache__/
 .pytest_cache/
 
 # Generated reference data and probes (reproducible from tools/ref)
-ref/
-probe/
-probe-build-local/
+/ref/
+/probe/
+/probe-build-local/
 
 # macOS
 .DS_Store
 .uvcache/
-scratch/
+/scratch/
