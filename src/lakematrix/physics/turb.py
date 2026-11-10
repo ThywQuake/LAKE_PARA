@@ -109,3 +109,25 @@ def turb_scales(row, ddz, ddz2, dzeta_int, dzeta_05int, h1, M, tw2, sal2,
                 Wedderburn=Wedderburn, LakeNumber=LakeNumber,
                 Rossby_rad=Rossby_rad, ThermThick=ThermThick,
                 ReTherm=ReTherm, RiTherm=RiTherm, Rp=Rp, Rpdens=Rpdens)
+
+
+def diffmin_hs(row, ddz, h1, area, M, backdiff0=-999.0):
+    """`DIFFMIN_HS` (phys_func.f90:2066-2110): Fang & Stefan background
+    conductivity, in W/(m*K).  ``row`` is 0-based (Fortran 1..M+1)."""
+    C1 = float(np.float32(8.17e-4))
+    C2 = float(np.float32(0.56))
+    C3 = float(np.float32(-0.43))
+    xmin = float(np.float32(7.0e-5))
+    z = backdiff0 if backdiff0 >= 0.0 else C1
+    out = np.zeros(M)
+    y = area * 1.0e-6
+    for i in range(M):
+        x = C.g / C.row0 * (row[i + 1] - row[i]) / (h1 * ddz[i])
+        if x <= 0.0:
+            out[i] = 0.0
+        else:
+            x = max(x, xmin)
+            val = z * y ** C2 * x ** C3
+            val *= 1.0e-4 * C.cw_m_row0 * 0.5
+            out[i] = val
+    return out

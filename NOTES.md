@@ -592,3 +592,17 @@ appears to mix records from several K_EPSILON calls (`read_probe_sequence`
 keeps the last record per tag), so the `eps1=6.8e-6` reading is not yet a
 trustworthy target.  Next: rebuild a probe that writes the call index into the
 tag (e.g. `KE_in_1`, `KE_in_2`) so each step can be compared unambiguously.
+
+## M3: K_EPSILON state carry fixed; 1-day comparison
+
+- The big multi-step bug: `step_case1` did `ke = k_epsilon(...)` but never
+  wrote the result back to `ss.ke`, so every step restarted from the
+  step-1 K_EPSILON state.  `ss.ke = ke` is now stored.
+- Effect: step-3 `Tw1` error 0.0123 -> **3.3e-4 K**; 180-step surface
+  24.7066 vs 24.7207 (-0.0141 K).
+- Added `backdiff=1` (`DIFFMIN_HS`, Fang & Stefan) and `backdiff0` setup
+  fields; the testlake uses it.
+- **1-day (4320 steps)** comparison with `summer1d`:
+  surface 25.523 vs 25.361 (+0.162 K); largest depth error +0.267 K at 5 m.
+  This is now the M3 acceptance gap (plan: 0.05 K).
+- Tests: 34 passed.

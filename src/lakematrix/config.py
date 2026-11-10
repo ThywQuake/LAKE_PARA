@@ -68,6 +68,8 @@ class Params:
     nmeltpoint: int = 1
     tricemethhydr: float = 0.0
     soilbotflx: float = 0.0
+    backdiff: int = 0
+    backdiff0: float = -999.0
 
     @property
     def static(self):

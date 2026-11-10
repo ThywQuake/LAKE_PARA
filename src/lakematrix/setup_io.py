@@ -92,6 +92,8 @@ def params_from_dicts(driver, setup, tables, name="lake"):
         nmeltpoint=_i(setup, "nmeltpoint", 1),
         tricemethhydr=_f(setup, "tricemethhydr", 0.0),
         soilbotflx=_f(setup, "soilbotflx", 0.0),
+        backdiff=_i(setup, "backdiff", 0),
+        backdiff0=_f(setup, "backdiff0", -999.0),
         d_surf=_f(setup, "d_surf", 1e-2), d_bot=_f(setup, "d_bot", 1e-2),
         soil_depth=_f(setup, "soil_depth", 10.0),
         dt=_f(driver, "dt", 20.0), interval=_f(driver, "interval", 1.0),

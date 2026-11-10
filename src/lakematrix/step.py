@@ -48,6 +48,7 @@ class StepState:
     Tsurf_prev: float = -999.0
     surftyp_prev: int = 0
     cdmw: float = 1.0e-15
+    ke_trace: list = field(default_factory=list)
 
 
 def _zsoil_geom(params, grid, l, st, bathym):
@@ -278,7 +279,7 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     """Full case-1 step (open water, no ice/snow)."""
     import numpy as np
     from .physics.density import ddens_dtemp, water_dens_ts
-    from .physics.turb import turb_scales
+    from .physics.turb import diffmin_hs, turb_scales
 
     r = step_case1_to_solver(ss, params, grid, rows, nstep, l, init_step=init_step)
     st = ss.state
@@ -336,10 +337,19 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ke.roughness = float(r["sc"]["roughness"])
     ke.knum = np.zeros(M + 2)
     ke.veg_sw = np.zeros(M + 2)
+    import copy as _copy
+    ss.ke_trace.append(_copy.deepcopy(ke))
     ke = k_epsilon(ke, dt, dt_keps=dt, nstep_keps=1, params=ss.ke_params)
+    ss.ke = ke
 
     # eddy diffusivity and turbulence diagnostics
-    lamw_new = C.lamw0 + np.maximum(ke.kt[1:M + 1], 0.0)
+    if int(np.atleast_1d(params.backdiff)[0]) == 1:
+        lamw_back = diffmin_hs(ss.mom.row, grid.ddz, float(st.h1[l]),
+                               float(np.atleast_1d(params.area_lake)[l]), M,
+                               float(np.atleast_1d(params.backdiff0)[0]))
+    else:
+        lamw_back = np.zeros(M)
+    lamw_new = C.lamw0 + np.maximum(ke.kt[1:M + 1], 0.0) + lamw_back
     k_turb = np.array([
         -0.5 * lamw_new[i] / C.cw_m_row0
         * (Tw2[i + 2] + st.Tw1[l][i + 1] - Tw2[i + 1] - st.Tw1[l][i])
