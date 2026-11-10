@@ -513,3 +513,15 @@ water depth already includes a small evaporative loss.  Test
   init step).  Step 2 `Tw1` 0.0016 K; step 3 0.0109 K.
 - Next: probe `SOILCOLSTEMP` at the init step and fix the side-column
   `Tsoilsurf`/`Tsoil1` residual.
+
+## M3: INIT_VAR raw state is exact; init-step side soil residual
+
+- `INIT_IN` (step 0) confirms `init_state` == raw `INIT_VAR`: side-column
+  `Tsoil1` 0.0, `wi1/wl1` 0.0.
+- `run_case1` now runs the model's initialization step (`init_step=True`)
+  before the regular steps.
+- After that init step: step-1 `Tw1` 2.2e-7 K, but `Tsoil1` side columns
+  still differ by 0.117 K (step-2 `Tw1` 0.0016 K).
+- A `SOILCOLSTEMP`/`TSURFSOILCOL` probe attempt hit the nested `CONTAINS`
+  insertion point and was disabled in `make_probe_build.py`; the next attempt
+  should probe `Tsoilsurf` inside `TSURFSOILCOL` at its actual end.

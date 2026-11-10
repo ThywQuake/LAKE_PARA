@@ -513,6 +513,23 @@ def patch_initvars(path):
         path.write_text("".join(lines))
         return
 
+
+
+def patch_soilcolstemp(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE SOILCOLSTEMP")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    end = s.index("END SUBROUTINE SOILCOLSTEMP")
+    s = s[:end] + ('  call LM_PROBE("SCOL", "Tsoil1", Tsoil1)\n'
+                   '  call LM_PROBE("SCOL", "soilflux", soilflux(1:nsoilcols))\n') + s[end:]
+    start2 = s.index("SUBROUTINE TSURFSOILCOL")
+    imp2 = s.index("implicit none", start2)
+    s = s[:imp2] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp2:]
+    end2 = s.index("END SUBROUTINE TSURFSOILCOL")
+    s = s[:end2] + '  call LM_PROBE("SCOL", "Tsoilsurf", Tsoilsurf(1:nsoilcols))\n' + s[end2:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -564,6 +581,8 @@ def main():
     patch_kepsilon_internal(out / "source" / "model" / "turb_mod.f90")
     patch_soilforlake_lake(out / "source" / "model" / "lake.f90")
     patch_initvars(out / "source" / "model" / "lake.f90")
+    # patch_soilcolstemp: insertion point conflicts with the nested CONTAINS;
+    # disabled until the probe is reworked.
     print(f"probe source: {out/'source'}")
 
     if args.build:
