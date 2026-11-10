@@ -271,6 +271,27 @@ def patch_surf_char(path):
     s = s[:end] + outs + s[end:]
     path.write_text(s)
 
+
+
+def patch_tdiff(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE T_DIFF")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    anchor = "  elseif (water == 1) then  ! There is no snow and ice, but water exists"
+    pos = s.index(anchor) + len(anchor)
+    ins = "".join(f'  call LM_PROBE("TD_in", "{n}", {n})\n' for n in
+                  ("Tsurf", "dt", "Tw1", "Tsoil1", "lamw", "area_int",
+                   "area_half", "h1", "ddz", "dhw", "dhw0", "PEMF",
+                   "pt_down_f", "lamsoil", "csoil", "rosoil", "dzs"))
+    s = s[:pos] + '\n  call LM_PROBE("TD_in", "RadWater_integr", RadWater%integr)\n' + ins + s[pos:]
+    anchor2 = "  else ! There is no snow, ice and water: only soil exists"
+    pos2 = s.index(anchor2)
+    outs = ('  call LM_PROBE("TD_out", "Tw2", Tw2)\n'
+            '  call LM_PROBE("TD_out", "Tsoil2", Tsoil2)\n')
+    s = s[:pos2] + outs + s[pos2:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -313,6 +334,7 @@ def main():
     patch_heatfluxsurf(out / "source" / "model" / "heatbalsurf_mod.f90")
     patch_radbalance(out / "source" / "model" / "heatbalsurf_mod.f90")
     patch_surf_char(out / "source" / "model" / "t_solver_mod.f90")
+    patch_tdiff(out / "source" / "model" / "t_solver_mod.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

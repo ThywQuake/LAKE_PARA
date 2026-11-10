@@ -231,3 +231,13 @@ Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
 - Probe `SC_in`/`SC_out` at step 1: all 8 outputs match to 1e-12
   (`albedo=0.33333333333333337`, `aM=float32(7.6326)`, ...).
 - M2 complete: 18 tests passed.
+
+## M3: T_DIFF probe
+
+- Probe `TD_in`/`TD_out` inserted in the `water == 1` (case 1) branch of
+  `T_DIFF`: inputs `Tsurf`, `dt`, `Tw1`, `Tsoil1`, `lamw`, `area_int`,
+  `area_half`, `h1`, `ddz`, `dhw`, `dhw0`, `PEMF`, `pt_down_f`, `lamsoil`,
+  `csoil`, `rosoil`, `dzs`, `RadWater%integr`; outputs `Tw2`, `Tsoil2`.
+- At step 1 `T_DIFF` is called 49 times; the first calls have the scanning
+  surface temperatures `-90, -85, ...`; `PEMF`/`pt_down_f` are zero at this
+  step.  This is the target for the `DIFF_COEF`/`T_DIFF` port.
