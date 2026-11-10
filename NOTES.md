@@ -314,3 +314,14 @@ Three large modules were transcribed by parallel subagents and import cleanly:
 These are **not yet validated against the Fortran probes** and not yet wired
 into `step.py`; the next step is the integration test.  The subagents' own
 smoke tests and branch scans are recorded in their reports, not in this repo.
+
+## M3: soil initial water/ice from INIT_VAR
+
+- `config.Params` now carries `soiltype`, `nmeltpoint`, `tricemethhydr`,
+  `soilbotflx` (read in `setup_io`).
+- `state.init_state` fills `Sals1` (`Salb0*row0/(rosdry(1)*(1-por(1)))`, as
+  in INIT_VAR), then `wl1`/`wi1` from `MELTINGPOINT`/`WL_MAX`/`UNFRWAT`/
+  `WI_MAX`.  Validation against the step-1 T_DIFF probe:
+  `csoil` 2e-10 relative, `rosoil` 1e-10, `lamsoil` exact.
+- `SOILFORLAKE`/`LATERHEAT`/`SOILCOLSTEMP` (the subagent port) still need
+  probe validation; `soil_cond_heat_coef` is validated.

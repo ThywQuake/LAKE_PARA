@@ -16,6 +16,8 @@ import numpy as np
 
 from .constants import C
 from .grid import Grid, interp_profile, zsoilcols
+from .physics.soil import (comsoilforlake, meltingpoint, unfrwat,
+                           wi_max, wl_max)
 
 
 @dataclass
@@ -100,10 +102,35 @@ def init_state(params, grid: Grid):
                 s["Tsoil1"][l, i, j] = tw + (params.Tbb0[l] - tw) * np.float64(
                     np.float32(1.0) - e)
 
-    # Salinity in soil: INIT_VAR assumes the same salinity as the bottom water.
-    # The soil density/porosity are set in COMSOILFORLAKE; v1 keeps the field
-    # in State and fills it when the soil properties are ported (M3).
-    s["Sals1"][:] = 0.0
+    # Soil salinity / liquid water / ice (INIT_VAR 208-290).  `Sals1` uses
+    # the first-layer dry density and porosity, not the cell's own values.
+    soiltype = int(np.atleast_1d(params.soiltype)[0])
+    tricemethhydr = float(np.atleast_1d(params.tricemethhydr)[0])
+    nmeltpoint = int(np.atleast_1d(params.nmeltpoint)[0])
+    soilbotflx = float(np.atleast_1d(params.soilbotflx)[0])
+    sp = comsoilforlake(soiltype=soiltype, ns=params.ns,
+                        nsoilcols=params.nsoilcols,
+                        soil_depth=params.soil_depth,
+                        tricemethhydr=tricemethhydr,
+                        nmeltpoint=nmeltpoint,
+                        soilbotflx=soilbotflx)
+    for l in range(L):
+        sals = params.Salb0[l] * C.row0 / (sp.rosdry[1] * (1.0 - sp.POR[1]))
+        for j in range(params.nsoilcols):
+            for i in range(params.ns):
+                s["Sals1"][l, i, j] = sals
+        for i in range(params.ns):
+            p_i = C.pref + C.row0 * C.g * (s["h1"][l] + grid.zsoil[i])
+            Tf = meltingpoint(sals, p_i, tricemethhydr, nmeltpoint)
+            for j in range(params.nsoilcols):
+                if s["Tsoil1"][l, i, j] > Tf:
+                    s["wi1"][l, i, j] = 0.0
+                    s["wl1"][l, i, j] = wl_max(sp.POR[i + 1], sp.rosdry[i + 1],
+                                               0.0, 0.0) - 0.01
+                else:
+                    s["wl1"][l, i, j] = unfrwat(s["Tsoil1"][l, i, j], i + 1, sp)
+                    s["wi1"][l, i, j] = (wi_max(sp.POR[i + 1], sp.rosdry[i + 1], 0.0)
+                                         - s["wl1"][l, i, j] - 0.01)
 
     # TKE/dissipation and background diffusivity (INIT_VAR 169-176, 475-480).
     s["E"][:, :params.M] = 10.0 ** (-5.5)

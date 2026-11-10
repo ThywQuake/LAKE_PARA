@@ -68,8 +68,36 @@ State that must persist between calls
 -------------------------------------
 ``k2_old`` (allocated zero on the first call), ``firstcall``, ``veg_sw``,
 ``lsu_water``/``lsv_water``, the seiche ``hx*`` fields, ``itherm``,
-``u_star`` and ``velfrict_*``.  ``momentum_solver`` does not mutate the input
-state; it returns a new :class:`MomentumState`.
+``u_star``, ``velfrict_*`` and the ATMOS wind-stress components
+``taux``/``tauy`` (the latter are set only in the open-water and thin-ice
+branches, exactly like the Fortran module variables).
+``momentum_solver`` does not mutate the input state; it returns a new
+:class:`MomentumState`.
+
+Notes, deviations and ambiguities
+---------------------------------
+* ``b0`` is ``None`` when ``l1 == 0`` and ``tau_i`` is ``None`` when
+  ``l1 <= 0``: the Fortran declares them ``intent(out)`` and leaves them
+  undefined in those cases.  ``velfrict_ice`` keeps its previous value when
+  there is no ice (module variable in the Fortran).
+* The lateral-friction block writes ``lsv%water(i)`` where the Fortran loop
+  variable is left at ``M+1`` (line 405), then zeroes index ``M+1``.  Thus
+  ``lsv_water(1)`` is never assigned.  This bug is preserved: entry 1 keeps
+  its previous state value (zero in a fresh state).
+* The Fortran allocates ``Force_x``/``Force_y`` locally without
+  initialisation.  They are explicitly zero-filled here; this only matters
+  for the (unreachable) ``cuette=1`` path, which reads them in the interior
+  rows without setting them.
+* ``Turbpar=1`` evaluates ``dzeta_05int(M+1)`` although that array is
+  dimensioned ``1:M``.  A zero sentinel is appended so the transcription
+  runs; the Fortran value is undefined.  The branch is unreachable for the
+  target configuration.
+* ``dyn_pgrad=4`` (DENSLAYERS/RELAYER, Crank-Nicolson seiches) and
+  ``Turbpar=5`` (EDDY_DIFF_MOST_RICH) are marked ``TODO`` and raise
+  ``NotImplementedError`` instead of inventing physics.
+* ``SET_DDENS_DTEMP``/``SET_DDENS_DSAL`` support ``eos=5`` (and
+  ``lindens=1``); other equations of state raise ``NotImplementedError``
+  with a pointer to :mod:`lakematrix.physics.density`.
 """
 
 from __future__ import annotations
@@ -422,11 +450,11 @@ def _sgesv(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 def _botfric_xx(par: int, u: float, v: float) -> float:
     """Lateral drag coefficient switch (momentum_mod.f90:369-376)."""
     if par == 0:
-        return 0.0
+        return 0.0                      # UNREACHABLE (botfric=1)
     if par == 1:
-        return _CLIN_BOT
+        return _CLIN_BOT                # target (botfric=1)
     if par == 2:
-        return _CQUAD_BOT * math.sqrt(u * u + v * v)
+        return _CQUAD_BOT * math.sqrt(u * u + v * v)  # UNREACHABLE
     raise ValueError(f"botfric={par}: Fortran SELECT CASE has no default")
 
 
@@ -786,7 +814,10 @@ def momentum_solver(state: MomentumState, params: MomentumParams,
     gradpy_tend = _pad1(st.gradpy_tend, M + 1, "gradpy_tend")
     rowc = _pad1(st.rowc, M + 1, "rowc")
     itherm = np.zeros(M + 3, dtype=int)
-    itherm[1:] = np.asarray(st.itherm, dtype=int)
+    itherm_in = np.asarray(st.itherm, dtype=int)
+    if itherm_in.shape != (M + 2,):
+        raise ValueError(f"itherm has shape {itherm_in.shape}, expected ({M + 2},)")
+    itherm[1:] = itherm_in
 
     ddz = _pad1(params.ddz, M, "ddz")
     ddz05 = _pad1(params.ddz05, M + 1, "ddz05")   # ddz05[i] = Fortran ddz05(i-1)
@@ -855,6 +886,7 @@ def momentum_solver(state: MomentumState, params: MomentumParams,
         urel = params.uwind - u_mod
         vrel = params.vwind - v_mod
     elif params.relwind == 0:
+        # UNREACHABLE for the target configuration (relwind=1).
         urel = params.uwind
         vrel = params.vwind
     else:
@@ -920,7 +952,10 @@ def momentum_solver(state: MomentumState, params: MomentumParams,
         velfrict_ice = float(st.velfrict_ice)
 
     # ---- lateral boundary friction (lines 365-409) ----------------------
-    if params.depth_area[0, 1] >= 0.0:
+    depth_area = np.asarray(params.depth_area, dtype=float)
+    if depth_area.ndim != 2 or depth_area.shape[1] != 2:
+        raise ValueError("depth_area must have shape (ndatamax, 2)")
+    if depth_area[0, 1] >= 0.0:
         for i in range(2, M + 1):
             xx = _botfric_xx(params.botfric, u1[i], v1[i])
             lsu[i] = (-1.0 / area_int[i]
@@ -1064,6 +1099,8 @@ def momentum_solver(state: MomentumState, params: MomentumParams,
         # ---- open water: l1 == 0 (lines 562-1169) ----------------------
         if l1 == 0.0:
             if params.cuette == 11 or params.PBLpar == 0:
+                # UNREACHABLE for the target configuration (cuette=0,
+                # PBLpar=3): constant momentum flux at the top.
                 taux = params.momflux0
                 tauy = 0.0
             else:

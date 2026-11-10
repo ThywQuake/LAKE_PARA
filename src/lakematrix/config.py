@@ -63,6 +63,11 @@ class Params:
     morphometry_len: np.ndarray
     # source case (for diagnostics)
     name: List[str]
+    # soil / lake setup options (thermodynamic core)
+    soiltype: int = 5
+    nmeltpoint: int = 1
+    tricemethhydr: float = 0.0
+    soilbotflx: float = 0.0
 
     @property
     def static(self):
