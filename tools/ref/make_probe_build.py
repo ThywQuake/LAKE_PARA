@@ -438,6 +438,18 @@ def patch_kepsilon_internal(path):
     start = s.index("SUBROUTINE K_EPSILON")
     imp = s.index("implicit none", start)
     s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    # after the surface dissipation flux (open-water kepsbc < 4)
+    anchor2 = s.index("xx(1) = 0.5*(area_int(2)/area_half(1)*k5_mid(2)*dt", start)
+    s = s[:anchor2] + ('  call LM_PROBE("KE6", "ksurf1", ksurf1(1))\n'
+                       '  call LM_PROBE("KE6", "Esurf1", Esurf1(1))\n'
+                       '  call LM_PROBE("KE6", "CE1", CE(1))\n'
+                       '  call LM_PROBE("KE6", "k21", k2(1))\n'
+                       '  call LM_PROBE("KE6", "tau_air", tau_air)\n') + s[anchor2:]
+    # after the two PROGONKA solves
+    for call in ("E_it2", "eps_it2"):
+        key = f"call PROGONKA (nveclen,a,b,c,d,{call},1,M)"
+        pos = s.index(key, start) + len(key)
+        s = s[:pos] + f'\n  call LM_PROBE("KE5", "{call}", {call}(1:M))' + s[pos:]
     anchor = s.index("lam_E  (i) = CE(i)/sigmaE", start)
     enddo = s.index("enddo", anchor)
     ins = ('  call LM_PROBE("KE3", "rhotemp", rhotemp(1:M))\n'
@@ -449,7 +461,8 @@ def patch_kepsilon_internal(path):
     end = s.index("END SUBROUTINE K_EPSILON")
     outs = "".join(f'  call LM_PROBE("KE2_out", "{n}", {n})\n' for n in
                    ("CE", "CEt", "s", "gen", "f", "c_eps1", "c_eps2",
-                    "c_eps3", "gamt", "gamu", "gamv"))
+                    "c_eps3", "gamt", "gamu", "gamv", "FTKES", "FTKEB",
+                    "FS", "FB", "TKES", "TKEB"))
     s = s[:end] + outs + s[end:]
     path.write_text(s)
 

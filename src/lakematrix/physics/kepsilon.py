@@ -1044,6 +1044,7 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
     DTDZH = st.DTDZH
 
     next_tstep_keps = False
+    trace = []
 
     # Scratch arrays of the Fortran routine (allocated once per call):
     #   work(1:M+1,1:2)             - buoyancy/shear production, then interpolants
@@ -1621,6 +1622,7 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
             # if (dE_it<1.E-10.or.deps_it<1.E-13) nl=3   ! commented out
 
         # ------------------ end of iterat_keps loop ----------------------
+        trace.append(np.array(st.e_it2, copy=True))
 
         if time_deriv == 0:
             # K-epsilon solver is in initialization mode: obtain initial
@@ -1809,6 +1811,7 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
     for i in range(1, M + 1):
         st.k2[i] = st.k2[i] * st.ce[i]
 
+    st.trace = trace
     st.firstcall = False            # turb_mod.f90:1156
 
     return st

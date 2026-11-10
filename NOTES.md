@@ -407,3 +407,16 @@ v25 `KE_in/KE_out` probes remain the entry-level reference.
 and runs the port; `replay(dir)` is the debugging entry point.  First-iteration
 `work1/work2` and `rhotemp` match the probe; the E/eps solve is the remaining
 divergence.  Next probes: `FTKES/FTKEB/FS/FB` and the two `PROGONKA` results.
+
+## M3: K_EPSILON mode-1 E solve still differs
+
+- Added probes `KE5` (E_it2/eps_it2 after each PROGONKA) and `KE6`
+  (ksurf1/Esurf1/CE(1)/k2(1)/tau_air after FS), plus a `trace` list in the
+  Python port that stores `e_it2` after each `keps_mode` pass.
+- Result: **mode 1** (`time_deriv=0`) `E_it2` = 6.28e-4 (port) vs 5.41e-4
+  (Fortran); the first-iteration `work1/work2` and `rhotemp` match, so the
+  divergence is in the mode-1 E tridiagonal coefficients or the `FTKES`
+  boundary (probe `FTKES=0`, so the boundary term should vanish).
+- `FS` differs because it inherits the mode-1/mode-2 `E_it1`; fixing mode 1
+  is expected to fix `FS`/`eps_it2`/`E2`.
+- Test suite still 30 passed.
