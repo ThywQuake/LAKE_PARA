@@ -9,4 +9,4 @@ The specification is `../LAKEMATRIX-PLAN.en.md` (authoritative) and
 acceptance tolerances are defined there. `NOTES.md` records deviations from the
 specification and the measured errors.
 
-Status: M2 in progress: tridiagonal, block-tridiagonal, density, radiation, bathymetry and SfcFlx are ported and tested; SENSLATMOM_FLUXES/HEATBALANCE assembly is next. Case 3 is not covered by the natural reference set; see `docs/reference_cases.md`.
+Status: M2 complete (solvers, density, radiation, bathymetry, SfcFlx, RADBALANCE, HEATFLUXSURF, SENSLATMOM_FLUXES and HEATBALANCE composition, 16 tests). M3 next. Case 3 is not covered by the natural reference set; see `docs/reference_cases.md`.

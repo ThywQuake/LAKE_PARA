@@ -47,3 +47,27 @@ def test_heatfluxsurf_water_linear_profile():
     np.testing.assert_allclose(conv, 0.0)
     # Bottom: -0.5*0.5*(30/20)*(-2.0)/(0.25*10) = 0.30
     np.testing.assert_allclose(bot, 0.30)
+
+
+def test_heatbalance_composition_against_probe():
+    """The HB_out probe holds all terms; the Fortran composition must match."""
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "tools" / "ref"))
+    from probe import read_probe_sequence
+
+    base = ROOT / "scratch" / "m0.4" / "thermo" / "probe-surf" / "probe" / "1"
+    if not (base / "HB_out.bin").exists():
+        import pytest
+        pytest.skip("HB probe not generated")
+    from lakematrix.physics.surface import heatbalance
+
+    seq = read_probe_sequence(base / "HB_out.bin")
+    n = 10
+    for c in range(len(seq) // n):
+        d = {name: float(seq[c * n + i][1]) for i, (name, _) in enumerate(seq[c * n:c * n + n])}
+        HB, eflux0, eflux0_kinem = heatbalance(
+            d["dHdt"], d["Radbal"], d["Radbal_surf"], d["eflux"],
+            d["convect_flux"], d["hflux"], d["Elatent"])
+        np.testing.assert_allclose(HB, d["HEATBALANCE"], rtol=0, atol=1e-9)
+        np.testing.assert_allclose(eflux0, d["eflux0"], rtol=0, atol=1e-9)
+        np.testing.assert_allclose(eflux0_kinem, d["eflux0_kinem"], rtol=0, atol=1e-15)

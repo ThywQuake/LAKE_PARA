@@ -194,3 +194,21 @@ exact), forcing, and batch stacking.  The probe files live under
   functions).
 - Next: wrap `SENSLATMOM_FLUXES` (PBLpar 3 path) and `HEATBALANCE`, then
   compare against `HEATBALANCE` probes.
+
+## M2: surface flux assembly
+
+- Added probes `SLM_in`/`SLM_out` (`SENSLATMOM_FLUXES`), `HFS_in`/`HFS_out`
+  (`HEATFLUXSURF`), `RB_in`/`RB_out` (`RADBALANCE`); at step 1 each is called
+  49 times.
+- `physics/surface.py`: `senslatmom_fluxes` (PBLpar 3), `heatbalance`.
+  - `HFS`: all 49 calls **exact** (eflux/dHdt/convect/botflux, 0.0).
+  - `SLM`: hflux/Elatent 4–8e-6 relative, tau/cdmw 1e-9, velfrict 5e-8,
+    wind10/wr exact.  The residual comes from the known 6e-6 K `tempair`
+    offset between the probes and the `SfcFlx` inputs; the SfcFlx core itself
+    matched 49/49 exactly.
+  - `RB`: Radbal/Radbal_surf 2.7e-6 relative, surfrad 1.3e-7, ShortBal/swup
+    exact.
+  - `heatbalance` composition (skin=0): probe terms reproduce `HEATBALANCE`,
+    `eflux0`, `eflux0_kinem` to 1e-9.
+- Tests: `tests/test_m2_surface.py`, `tests/test_m2_sfcflx.py`; suite 16
+  passed.  **M2 is complete.**

@@ -1,9 +1,8 @@
 """Surface-layer momentum and heat fluxes over lakes (Fortran `MODULE SfcFlx`).
 
-Faithful NumPy port of `lakebatch/core/source/shared/SfcFlx_mod.F90`
-(LAKE 3.2, SfcFlx 1.00, D. Mironov, DWD).  The procedures inlined from the
-`SfcFlx_*.incf` files are reproduced formula by formula, branch by branch,
-including both Newton iterations and their `DO WHILE` convergence criteria:
+Faithful NumPy port of `lakebatch/core/source/shared/SfcFlx_mod.F90` (LAKE 3.2,
+SfcFlx 1.00, D. Mironov, DWD).  Every formula, constant, branch and iteration
+of the inlined `SfcFlx_*.incf` procedures is reproduced:
 
     SfcFlx_momsenlat   SfcFlx_mod.F90:221-612   (SfcFlx_momsenlat.incf)
     SfcFlx_rhoair      SfcFlx_mod.F90:623-687   (SfcFlx_rhoair.incf)
@@ -12,25 +11,18 @@ including both Newton iterations and their `DO WHILE` convergence criteria:
     SfcFlx_spechum     SfcFlx_mod.F90:949-1012  (SfcFlx_spechum.incf)
     SfcFlx_lwradwsfc   SfcFlx_mod.F90:1019-1081 (SfcFlx_lwradwsfc.incf)
 
-Notes on the port
------------------
-* `ireals` is `SELECTED_REAL_KIND(12, 200)`, i.e. IEEE float64; `iintegers`
-  is the default integer.  No literal in the ported procedures is written
-  with `_4`, `dble` or `real(4)`, so every constant here is float64
-  (`np.float64`) and no float32 constant is introduced.
-* The FLake parameters `tpl_grav`, `tpl_L_f` and `h_Ice_min_flk` are copied
-  from `flake_parameters_mod.F90` under their Fortran names instead of being
-  taken from `lakematrix.constants`: the LAKE-core constant `g = 9.814`
-  differs from FLake's `tpl_grav = 9.81`, and using it would silently change
-  the fluxes.  (`tpl_T_f`, `tpl_rho_w_r` and `tpl_c_w` are USEd by the
-  Fortran module but not referenced by the procedures ported here.)
-* The Fortran module keeps the last results in the module variables
-  `u_star_a_sf`, `Q_mom_a_sf`, `Q_sens_a_sf`, `Q_lat_a_sf`, `Q_watvap_a_sf`.
-  Those side effects are dropped: every function below is pure.
-* `SfcFlx_roughness` is a SUBROUTINE with five INTENT(OUT) arguments, so it
-  returns the tuple `(c_z0u_fetch, u_star_thresh, z0u, z0t, z0q)` in that
-  order.
-* All fluxes are positive when directed upwards, as in the Fortran code.
+Porting notes:
+
+* `ireals` is `SELECTED_REAL_KIND(12, 200)` (IEEE float64); no literal in these
+  procedures uses `_4`, `dble` or `real(4)`, so every constant is `np.float64`
+  and no float32 value is introduced.
+* `tpl_grav`, `tpl_L_f` and `h_Ice_min_flk` are copied from
+  `flake_parameters_mod.F90` rather than taken from `lakematrix.constants`,
+  whose LAKE-core `g = 9.814` differs from FLake's `tpl_grav = 9.81`.
+* The Fortran module variables `*_sf` are not reproduced; the functions are
+  pure.  `SfcFlx_roughness` returns its five INTENT(OUT) arguments in order:
+  `(c_z0u_fetch, u_star_thresh, z0u, z0t, z0q)`.
+* Fluxes are positive when directed upwards, as in the Fortran code.
 """
 
 import math
@@ -49,11 +41,11 @@ h_Ice_min_flk = np.float64(1.0e-09)  # Minimum ice thickness [m]
 # expressions for the roughness lengths, SfcFlx_mod.F90:86-127.
 # ---------------------------------------------------------------------------
 c_Karman = np.float64(0.40)          # The von Karman constant
-Pr_neutral = np.float64(1.0)         # Turbulent Prandtl number at neutral static stability
-Sc_neutral = np.float64(1.0)         # Turbulent Schmidt number at neutral static stability
+Pr_neutral = np.float64(1.0)         # Turbulent Prandtl number, neutral stability
+Sc_neutral = np.float64(1.0)         # Turbulent Schmidt number, neutral stability
 c_MO_u_stab = np.float64(5.0)        # Constant of the MO theory (wind, stable stratification)
-c_MO_t_stab = np.float64(5.0)        # Constant of the MO theory (temperature, stable stratification)
-c_MO_q_stab = np.float64(5.0)        # Constant of the MO theory (humidity, stable stratification)
+c_MO_t_stab = np.float64(5.0)        # MO constant (temperature, stable stratification)
+c_MO_q_stab = np.float64(5.0)        # MO constant (humidity, stable stratification)
 c_MO_u_conv = np.float64(15.0)       # Constant of the MO theory (wind, convection)
 c_MO_t_conv = np.float64(15.0)       # Constant of the MO theory (temperature, convection)
 c_MO_q_conv = np.float64(15.0)       # Constant of the MO theory (humidity, convection)
@@ -62,10 +54,10 @@ c_MO_t_exp = np.float64(0.5)         # Constant of the MO theory (temperature, e
 c_MO_q_exp = np.float64(0.5)         # Constant of the MO theory (humidity, exponent)
 z0u_ice_rough = np.float64(1.0e-03)  # Aerodynamic roughness of the ice surface [m] (rough flow)
 c_z0u_smooth = np.float64(0.1)       # Constant in the expression for z0u (smooth flow)
-c_z0u_rough = np.float64(1.23e-02)   # The Charnock constant in the expression for z0u (rough flow)
-c_z0u_rough_L = np.float64(1.00e-01)  # An increased Charnock constant (used as the upper limit)
-c_z0u_ftch_f = np.float64(0.70)      # Factor in the expression for fetch-dependent Charnock parameter
-c_z0u_ftch_ex = np.float64(0.3333333)  # Exponent in the expression for fetch-dependent Charnock parameter
+c_z0u_rough = np.float64(1.23e-02)   # The Charnock constant for z0u (rough flow)
+c_z0u_rough_L = np.float64(1.00e-01)  # Increased Charnock constant (upper limit)
+c_z0u_ftch_f = np.float64(0.70)      # Factor for the fetch-dependent Charnock parameter
+c_z0u_ftch_ex = np.float64(0.3333333)  # Exponent for the fetch-dependent Charnock parameter
 c_z0t_rough_1 = np.float64(4.0)      # Constant in the expression for z0t (factor)
 c_z0t_rough_2 = np.float64(3.2)      # Constant in the expression for z0t (factor)
 c_z0t_rough_3 = np.float64(0.5)      # Constant in the expression for z0t (exponent)
@@ -84,7 +76,7 @@ c_z0q_ice_b1t = np.float64(-0.628)   # Constant in the expression for z0q over i
 c_z0q_ice_b0r = np.float64(0.396)    # Constant in the expression for z0q over ice
 c_z0q_ice_b1r = np.float64(-0.512)   # Constant in the expression for z0q over ice
 c_z0q_ice_b2r = np.float64(-0.180)   # Constant in the expression for z0q over ice
-Re_z0s_ice_t = np.float64(2.5)       # Threshold surface Reynolds number for z0t,z0q over ice (Andreas 2002)
+Re_z0s_ice_t = np.float64(2.5)       # Threshold surface Re for z0t,z0q over ice (Andreas 2002)
 Re_z0u_thresh = np.float64(0.1)      # Threshold roughness Reynolds number [not used]
 
 # ---------------------------------------------------------------------------
@@ -164,7 +156,9 @@ def SfcFlx_rhoair(T, q, P):
 
     Fortran: `SfcFlx_rhoair`, SfcFlx_mod.F90:623-687.
     """
-    return P / tpsf_R_dryair / T / (np.float64(1.0) + (np.float64(1.0) / tpsf_Rd_o_Rv - np.float64(1.0)) * q)
+    return P / tpsf_R_dryair / T / (np.float64(1.0)
+                                   + (np.float64(1.0) / tpsf_Rd_o_Rv
+                                      - np.float64(1.0)) * q)
 
 
 def SfcFlx_lwradwsfc(T):
@@ -193,8 +187,8 @@ def SfcFlx_roughness(fetch, U_a, u_star, h_ice):
         c_z0u_fetch = min(c_z0u_fetch, c_z0u_rough_L)  # Limit Charnock parameter
 
         # Threshold value of friction velocity
-        u_star_thresh = (c_z0u_smooth / c_z0u_fetch * tpl_grav * tpsf_nu_u_a
-                         ) ** num_1o3_sf
+        u_star_thresh = ((c_z0u_smooth / c_z0u_fetch * tpl_grav * tpsf_nu_u_a)
+                         ** num_1o3_sf)
 
         # Surface Reynolds number and its threshold value
         Re_s = u_star ** 3 / tpsf_nu_u_a / tpl_grav

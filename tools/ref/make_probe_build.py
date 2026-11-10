@@ -173,6 +173,84 @@ def patch_sfcflx(path):
     s = s[:end] + outs + s[end:]
     path.write_text(s)
 
+
+
+def patch_heatbalance(path):
+    s = path.read_text()
+    start = s.index("FUNCTION HEATBALANCE")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    first = s.index("if     (skin%par == 1", start)
+    s = s[:first] + ('  call LM_PROBE("HB_in", "Tsurf", Tsurf)\n'
+                     '  call LM_PROBE("HB_in", "surftyp", surftyp)\n') + s[first:]
+    end = s.index("END FUNCTION HEATBALANCE")
+    ret = s.rindex("RETURN", 0, end)
+    probes = "".join(f'  call LM_PROBE("HB_out", "{n}", {n})\n' for n in
+                     ("hflux", "Elatent", "Radbal", "Radbal_surf", "eflux",
+                      "dHdt", "convect_flux", "eflux0", "eflux0_kinem", "HEATBALANCE"))
+    s = s[:ret] + probes + s[ret:]
+    path.write_text(s)
+
+
+def patch_senslatmom(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE SENSLATMOM_FLUXES")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    first = s.index("if (relwind%par == 1)", start)
+    ins = "".join(f'  call LM_PROBE("SLM_in", "{n}", {n})\n' for n in
+                  ("Tsurf", "fetch", "uwind", "vwind", "u", "v", "tempair",
+                   "pressure", "humair", "zref", "roughness", "relhums",
+                   "aM", "bM", "l1", "h1", "relwind%par", "PBLpar%par"))
+    s = s[:first] + ins + s[first:]
+    end = s.index("END SUBROUTINE SENSLATMOM_FLUXES")
+    ret = s.rindex("RETURN", 0, end)
+    probes = "".join(f'  call LM_PROBE("SLM_out", "{n}", {n})\n' for n in
+                     ("hflux", "Elatent", "tau", "cdmw", "xlew", "velfrict",
+                      "wind10", "ro", "humsurf", "wr", "TET2", "TET1"))
+    s = s[:ret] + probes + s[ret:]
+    path.write_text(s)
+
+
+
+def patch_heatfluxsurf(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE HEATFLUXSURF")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    first = s.index("SELECT CASE (surftyp)", start)
+    ins = "".join(f'  call LM_PROBE("HFS_in", "{n}", {n})\n' for n in
+                  ("Tw1", "Tw2", "lamw", "h1", "ddz", "dhw0", "dt",
+                   "bathymwater(1)%area_int", "bathymwater(1)%area_half",
+                   "bathymwater(M+1)%area_int", "bathymwater(M)%area_half"))
+    s = s[:first] + ins + s[first:]
+    end = s.index("END SUBROUTINE HEATFLUXSURF")
+    ret = s.rindex("RETURN", 0, end)
+    outs = "".join(f'  call LM_PROBE("HFS_out", "{n}", {n})\n' for n in
+                   ("eflux", "dHdt", "convect_flux", "botflux"))
+    s = s[:ret] + outs + s[ret:]
+    path.write_text(s)
+
+
+def patch_radbalance(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE RADBALANCE")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    first = s.index("if     (ifrad%par == 1)", start)
+    ins = "".join(f'  call LM_PROBE("RB_in", "{n}", {n})\n' for n in
+                  ("Tsurf", "surftyp", "albedo", "albedo_lw", "emissivity",
+                   "longwave", "shortwave", "netrad", "cloud", "humair",
+                   "pressure", "tempair"))
+    s = s[:first] + ins + ('  call LM_PROBE("RB_in", "RadWater_integr", RadWater%integr(0:1))\n'
+                           '  call LM_PROBE("RB_in", "RadIce_integr", RadIce%integr(0:1))\n') + s[first:]
+    end = s.index("END SUBROUTINE RADBALANCE")
+    ret = s.rindex("RETURN", 0, end)
+    outs = "".join(f'  call LM_PROBE("RB_out", "{n}", {n})\n' for n in
+                   ("Radbal", "Radbal_surf", "ShortBal_toplayer", "surfrad", "swup"))
+    s = s[:ret] + outs + s[ret:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -210,6 +288,10 @@ def main():
     patch_density(out / "source" / "model" / "lake.f90")
     patch_bathym(out / "source" / "model" / "lake.f90")
     patch_sfcflx(out / "source" / "shared" / "SfcFlx_mod.F90")
+    patch_heatbalance(out / "source" / "model" / "heatbalsurf_mod.f90")
+    patch_senslatmom(out / "source" / "model" / "heatbalsurf_mod.f90")
+    patch_heatfluxsurf(out / "source" / "model" / "heatbalsurf_mod.f90")
+    patch_radbalance(out / "source" / "model" / "heatbalsurf_mod.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:
