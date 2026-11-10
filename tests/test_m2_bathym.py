@@ -29,7 +29,7 @@ def test_bathymetry_matches_fortran():
     q = read_probe(PROBE)
     b = bathymetry(p, g, s, float(q["preswat"][0]))
     np.testing.assert_allclose(b.z_full[0], q["z_full"], rtol=0, atol=1e-12)
-    np.testing.assert_allclose(b.preswat[0], q["preswat"], rtol=0, atol=1e-2)
+    np.testing.assert_allclose(b.preswat[0], q["preswat"], rtol=0, atol=1e-9)
     np.testing.assert_allclose(b.area_int[0], q["area_int"], rtol=0, atol=1e-6)
     np.testing.assert_allclose(b.area_half[0], q["area_half"][:p.M], rtol=0, atol=1e-6)
     np.testing.assert_allclose(b.vol[0], q["vol"], rtol=0, atol=1e-6)

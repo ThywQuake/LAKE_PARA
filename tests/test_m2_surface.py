@@ -71,3 +71,25 @@ def test_heatbalance_composition_against_probe():
         np.testing.assert_allclose(HB, d["HEATBALANCE"], rtol=0, atol=1e-9)
         np.testing.assert_allclose(eflux0, d["eflux0"], rtol=0, atol=1e-9)
         np.testing.assert_allclose(eflux0_kinem, d["eflux0_kinem"], rtol=0, atol=1e-15)
+
+
+def test_surf_char_water_against_probe():
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "tools" / "ref"))
+    from probe import read_probe_sequence
+
+    base = ROOT / "scratch" / "m0.4" / "thermo" / "probe-sc" / "probe" / "1"
+    if not (base / "SC_in.bin").exists():
+        import pytest
+        pytest.skip("SURF_CHAR probe not generated")
+    from lakematrix.physics.surface import surf_char
+
+    ins = {n: v for n, v in read_probe_sequence(base / "SC_in.bin")}
+    out = {n: float(v) for n, v in read_probe_sequence(base / "SC_out.bin")}
+    got = surf_char(int(ins["surftyp"]), int(ins["year"]), int(ins["month"]),
+                    int(ins["day"]), float(ins["hour"]), float(ins["phi"]),
+                    float(ins["fetch"]), float(ins["wind"]),
+                    float(ins["velfrict_prev"]), int(ins["varalb%par"]))
+    for k in ("albedo", "albedo_lw", "roughness", "aM", "bM",
+              "emissivity", "relhums"):
+        np.testing.assert_allclose(got[k], out[k], rtol=0, atol=1e-12)

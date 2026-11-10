@@ -212,3 +212,22 @@ exact), forcing, and batch stacking.  The probe files live under
     `eflux0`, `eflux0_kinem` to 1e-9.
 - Tests: `tests/test_m2_surface.py`, `tests/test_m2_sfcflx.py`; suite 16
   passed.  **M2 is complete.**
+
+## Constants: Fortran default-real literals are float32-rounded
+
+The probe exposed a systematic difference: `DEFINE_PHYS_CONSTANTS` assigns
+default-real (single precision) literals to `real(8)` variables, so the stored
+double is `float32(literal)`, not the exact decimal.  `constants.py` now uses
+`_s(x) = float(np.float32(x))` for those values (`g`, `Kelvin0`, `Rd`, `Rwv`,
+`aMagw`, `bMagw`, `emissivityofwater`, `albedoofwater_lw`, ...).  Literals with
+a `d` exponent (`sigma`, `pref`, `T_phase_threshold`, ...) stay double.
+Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
+`preswat` differs by 5.8e-11 Pa instead of 2.9e-3 Pa.
+
+## M2: SURF_CHAR
+
+- `surface.py`: `julian_day`, `sinh0`, `water_albedo`, `surf_char` (all four
+  surface types; water uses `SfcFlx_roughness` and the variable albedo).
+- Probe `SC_in`/`SC_out` at step 1: all 8 outputs match to 1e-12
+  (`albedo=0.33333333333333337`, `aM=float32(7.6326)`, ...).
+- M2 complete: 18 tests passed.

@@ -16,6 +16,7 @@ LAKEBATCH = ROOT.parent / "lakebatch"
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools" / "ref"))
 
+from lakematrix.constants import C  # noqa: E402
 from lakematrix.forcing import at_step, read_ascii  # noqa: E402
 from lakematrix.grid import create_grid  # noqa: E402
 from lakematrix.setup_io import read_case, read_cases  # noqa: E402
@@ -83,7 +84,7 @@ def test_forcing():
         assert f[3] == pytest.approx(float(p["shortwave"]), abs=1e-12)
         assert f[2] == pytest.approx(float(p["longwave"]), abs=1e-12)
         # tempair in LAKE is Celsius; the ASCII column is kelvin.
-        assert f[0] - 273.15 == pytest.approx(float(p["tempair"]), abs=1e-5)
+        assert f[0] - C.Kelvin0 == pytest.approx(float(p["tempair"]), abs=1e-12)
 
 
 @needs_case

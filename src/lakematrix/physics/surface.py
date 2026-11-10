@@ -120,3 +120,69 @@ def heatbalance(dHdt, Radbal, Radbal_surf, eflux, convect_flux, hflux, Elatent):
     eflux0 = Radbal_surf - hflux - Elatent
     eflux0_kinem = eflux0 / C.cw_m_row0
     return HB, eflux0, eflux0_kinem
+
+
+def julian_day(year, month, day):
+    """`JULIAN_DAY` (time.f90:56-89)."""
+    ndaym = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    if year % 4 == 0 and not (year % 100 == 0 and year % 400 != 0):
+        ndaym[1] = 29
+    return sum(ndaym[:month - 1]) + day
+
+
+def sinh0(year, month, day, hour, phi):
+    """`SINH0` (phys_func.f90:580-613): sine of the solar elevation."""
+    nday = julian_day(year, month, day)
+    delta = 23.5 * np.pi / 180.0 * np.cos(2.0 * np.pi * (float(nday) - 173.0) / 365.0)
+    theta = np.pi * (hour - 12.0) / 12.0
+    phi_rad = phi * np.pi / 180.0
+    s = (np.sin(phi_rad) * np.sin(delta)
+         + np.cos(phi_rad) * np.cos(delta) * np.cos(theta))
+    return max(float(s), 0.0)
+
+
+def water_albedo(sinh):
+    """`WATER_ALBEDO` (phys_func.f90:1238-1252)."""
+    return 0.05 / (sinh + 0.15)
+
+
+def _f32(x):
+    return float(np.float32(x))
+
+
+def surf_char(surftyp, year, month, day, hour, phi, fetch, wind,
+              velfrict_prev, varalb=1):
+    """`SURF_CHAR` (t_solver_mod.f90:940-1034) for all four surface types."""
+    from .sfcflx import SfcFlx_roughness
+
+    if surftyp == 1:  # soil
+        return dict(albedo=C.albedoofsoil, albedo_lw=C.albedoofsoil_lw,
+                    roughness=_f32(0.05), aM=C.aMagw, bM=C.bMagw,
+                    emissivity=C.emissivityofsoil, relhums=_f32(0.5),
+                    velfrict_prev=velfrict_prev)
+    if surftyp == 2:  # ice
+        return dict(albedo=C.albedoofice, albedo_lw=C.albedoofice_lw,
+                    roughness=_f32(1.0e-5), aM=C.aMagi, bM=C.bMagi,
+                    emissivity=C.emissivityofice, relhums=_f32(0.7),
+                    velfrict_prev=velfrict_prev)
+    if surftyp == 3:  # snow
+        return dict(albedo=C.albedoofsnow, albedo_lw=C.albedoofsnow_lw,
+                    roughness=_f32(1.0e-3), aM=C.aMagi, bM=C.bMagi,
+                    emissivity=C.emissivityofsnow, relhums=_f32(0.7),
+                    velfrict_prev=velfrict_prev)
+    if surftyp != 4:
+        raise ValueError(f"unknown surftyp {surftyp}")
+
+    velfrict_prev = max(velfrict_prev, 0.01)
+    roughness = SfcFlx_roughness(fetch, wind, velfrict_prev, 0.0)[2]
+    aM, bM = C.aMagw, C.bMagw
+    if varalb == 0:
+        albedo = C.albedoofwater
+    elif varalb == 1:
+        albedo = water_albedo(sinh0(year, month, day, hour, phi))
+    else:
+        raise ValueError(f"unknown varalb {varalb}")
+    return dict(albedo=albedo, albedo_lw=C.albedoofwater_lw,
+                roughness=roughness, aM=aM, bM=bM,
+                emissivity=C.emissivityofwater, relhums=1.0,
+                velfrict_prev=velfrict_prev)

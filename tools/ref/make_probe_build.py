@@ -251,6 +251,26 @@ def patch_radbalance(path):
     s = s[:ret] + outs + s[ret:]
     path.write_text(s)
 
+
+
+def patch_surf_char(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE SURF_CHAR")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    anchor = "select case (surftyp)"
+    first = s.index(anchor, start)
+    ins = "".join(f'  call LM_PROBE("SC_in", "{n}", {n})\n' for n in
+                  ("surftyp", "year", "month", "day", "hour", "phi", "fetch",
+                   "wind", "velfrict_prev", "varalb%par"))
+    s = s[:first] + ins + s[first:]
+    end = s.index("END SUBROUTINE SURF_CHAR")
+    outs = "".join(f'  call LM_PROBE("SC_out", "{n}", {n})\n' for n in
+                   ("albedo", "albedo_lw", "roughness", "aM", "bM",
+                    "emissivity", "relhums", "velfrict_prev"))
+    s = s[:end] + outs + s[end:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -292,6 +312,7 @@ def main():
     patch_senslatmom(out / "source" / "model" / "heatbalsurf_mod.f90")
     patch_heatfluxsurf(out / "source" / "model" / "heatbalsurf_mod.f90")
     patch_radbalance(out / "source" / "model" / "heatbalsurf_mod.f90")
+    patch_surf_char(out / "source" / "model" / "t_solver_mod.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:
