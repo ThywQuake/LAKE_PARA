@@ -155,6 +155,24 @@ def patch_bathym(path):
         i += 1
     path.write_text("\n".join(out) + "\n")
 
+
+
+def patch_sfcflx(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE SfcFlx_momsenlat")
+    imp = s.index("IMPLICIT NONE", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    anchor = "wvpres_s = SfcFlx_satwvpres"
+    probes = "".join(f'  call LM_PROBE("SFC_in", "{n}", {n})\n' for n in
+                     ("height_u", "height_tq", "fetch", "U_a", "T_a", "q_a",
+                      "T_s", "P_a", "h_ice"))
+    s = s.replace(anchor, probes + anchor, 1)
+    end = s.index("END SUBROUTINE SfcFlx_momsenlat")
+    outs = "".join(f'  call LM_PROBE("SFC_out", "{n}", {n})\n' for n in
+                   ("Q_momentum", "Q_sensible", "Q_latent", "Q_watvap"))
+    s = s[:end] + outs + s[end:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -191,6 +209,7 @@ def main():
     patch_init_var(out / "source" / "model" / "init_var_mod.f90")
     patch_density(out / "source" / "model" / "lake.f90")
     patch_bathym(out / "source" / "model" / "lake.f90")
+    patch_sfcflx(out / "source" / "shared" / "SfcFlx_mod.F90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

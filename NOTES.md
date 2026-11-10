@@ -163,3 +163,18 @@ exact), forcing, and batch stacking.  The probe files live under
 
 - `surface.py`: `SfcFlx_*`, `SENSLATMOM_FLUXES`, `RADBALANCE`, `HEATBALANCE`,
   `HEATFLUXSURF`.  This is the last M2 module and the entry point to M3.
+
+## M2: surface radiation and heat-flux scaffolding
+
+- `physics/surface.py`: `radbalance` (water/ice/snow/soil; `skin=0`,
+  `ifrad=1`) and `heatfluxsurf_water` (the water branch of `HEATFLUXSURF`,
+  including `eflux`, `dHdt`, `convect_flux` and `botflux`).
+- Probe `SFC_in`/`SFC_out` added inside `SfcFlx_momsenlat`; at step 1 it is
+  called 49 times (441 input records / 9, 196 output records / 4).  The
+  sequence reader `probe.read_probe_sequence` returns all records in file
+  order, because the per-step tag is reused.
+- Tests: `tests/test_m2_surface.py` (RADBALANCE water and the water heat-flux
+  branch); suite 13 passed.
+- `SfcFlx_momsenlat` is being transcribed to `physics/sfcflx.py`; once it is in,
+  `SENSLATMOM_FLUXES`/`HEATBALANCE` can be assembled and tested against the
+  SFC probe.
