@@ -31,3 +31,22 @@ def test_step_case1_to_solver_matches_probe():
     ts = {n: float(v) for n, v in read_probe_sequence(TS / "TS_out.bin")}
     assert r["Tsurf3"] == pytest.approx(ts["Tsurf3"], abs=1e-9)
     assert r["Bal3"] == pytest.approx(ts["Bal3"], abs=1e-4)
+
+
+@pytest.mark.skipif(not (ROOT / "scratch/m0.4/thermo/probe-forcing/probe/2/LAKE_entry.bin").exists(),
+                    reason="step-2 probe not generated")
+def test_full_case1_step_close_to_probe():
+    from probe import read_probe_sequence
+
+    case = read_case(ROOT / "ref" / "v1" / "full425d")
+    grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
+                       case.soil_depth, 0.02)
+    ss = build_step_state(case, grid)
+    rows = read_ascii("/Users/mac/文档/研究生/LAKE/LAKE3.2/meteo/testlake.dat")
+    from lakematrix.step import step_case1
+    r = step_case1(ss, case, grid, rows, 1)
+    p2 = {n: v for n, v in read_probe_sequence(
+        ROOT / "scratch/m0.4/thermo/probe-forcing/probe/2/LAKE_entry.bin")}
+    assert np.max(np.abs(r["Tw1"] - p2["Tw1"])) < 0.03
+    assert np.max(np.abs(r["Tsoil1"] - p2["Tsoil1"])) < 0.07
+    assert abs(r["h1"] - float(p2["h1"])) < 1e-3

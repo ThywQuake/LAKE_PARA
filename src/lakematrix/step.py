@@ -104,17 +104,17 @@ def build_step_state(params, grid, l=0):
         kor=float(np.atleast_1d(params.kor)[l]),
         uwind=0.0, vwind=0.0, cdmw=1.0e-3, zref=2.0,
         fetch=float(np.atleast_1d(params.fetch)[l]))
-    u1 = np.zeros(params.M + 2)
-    v1 = np.zeros(params.M + 2)
-    u1[1:] = float(np.atleast_1d(params.us0)[l])
-    v1[1:] = float(np.atleast_1d(params.vs0)[l])
+    u1 = np.zeros(params.M + 1)
+    v1 = np.zeros(params.M + 1)
+    u1[:] = float(np.atleast_1d(params.us0)[l])
+    v1[:] = float(np.atleast_1d(params.vs0)[l])
     mom = MomentumState(
-        u1=u1, v1=v1, E1=np.r_[0, st.E[l]], eps1=np.r_[0, st.eps[l]],
-        k2=np.zeros(params.M + 2), k2_old=np.zeros(params.M + 1),
-        row=np.r_[0, row], Ri=np.zeros(params.M + 1),
-        knum=np.zeros(params.M + 2), veg_sw=np.zeros(params.M + 2),
-        u_star=0.0, Tw1=np.r_[0, st.Tw1[l]], Sal1=np.r_[0, st.Sal1[l]],
-        lsu_water=np.zeros(params.M + 2), lsv_water=np.zeros(params.M + 2),
+        u1=u1, v1=v1, E1=st.E[l], eps1=st.eps[l],
+        k2=np.zeros(params.M + 1), k2_old=np.zeros(params.M),
+        row=row, Ri=np.zeros(params.M),
+        knum=np.zeros(params.M + 1), veg_sw=np.zeros(params.M + 1),
+        u_star=0.0, Tw1=st.Tw1[l], Sal1=st.Sal1[l],
+        lsu_water=np.zeros(params.M + 1), lsv_water=np.zeros(params.M + 1),
         uv=np.abs(u1), h1=h1, l1=0.0, ls1=0.0, dhw=0.0, dhw0=0.0,
         alphax=0.0, alphay=0.0, velfrict_bot=0.0, velfrict_ice=0.0)
     M = params.M
@@ -197,6 +197,22 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
     dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
     dhw0 = dhwp + dhwe
 
+    # momentum (uses the previous step's latent heat flux for dhw)
+    ss.mom_params.uwind = float(uwind)
+    ss.mom_params.vwind = float(vwind)
+    ss.mom_params.cdmw = 1.0e-3
+    ss.mom_params.fetch = fetch
+    ss.mom.u1 = np.full(M + 1, 1.0e-5)
+    ss.mom.v1 = np.zeros(M + 1)
+    ss.mom.Tw1 = st.Tw1[l]
+    ss.mom.Sal1 = st.Sal1[l]
+    ss.mom.row = water_dens_ts(st.Tw1[l], st.Sal1[l], ss.bathym.preswat[l])
+    ss.mom.h1 = float(st.h1[l])
+    ss.mom.dhw = dhw
+    ss.mom.dhw0 = dhw0
+    mom_res = momentum_solver(ss.mom, ss.mom_params, dt)
+    ss.mom = mom_res.state
+
     # soil columns at the current water temperature
     ss.soil.Tw1 = np.r_[0, st.Tw1[l]]
     ss.soil.Ti1 = np.r_[0, st.Ti1[l]]
@@ -234,4 +250,102 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
     r = t_solver(fn, nstep, 4, 0, 0.0)
     return dict(Tsurf3=r["Tsurf3"], state=r["state"], iter=r["iter"],
                 Bal3=r["Bal3"], dhw=dhw, dhw0=dhw0, integr=integr, lsh=lsh,
-                sc=sc, f=f)
+                sc=sc, f=f, ctx=ctx, mom=mom_res, precip=precip,
+                uwind=uwind, vwind=vwind, ss=ss)
+
+
+def step_case1(ss, params, grid, rows, nstep=1, l=0):
+    """Full case-1 step (open water, no ice/snow)."""
+    import numpy as np
+    from .physics.density import ddens_dtemp, water_dens_ts
+    from .physics.turb import turb_scales
+
+    r = step_case1_to_solver(ss, params, grid, rows, nstep, l)
+    st = ss.state
+    dt = params.dt
+    M, ns, nc = params.M, params.ns, params.nsoilcols
+    Tw2 = np.r_[0, r["state"]["Tw2"]]
+    Tsoil2 = np.r_[0, r["state"]["Tsoil2"]]
+
+    # deepest soil column
+    ss.soil.Tsoil2 = Tsoil2
+    ss.soil = soilforlake(ss.soil, ss.soil_params, dt, is_=nc)
+
+    # salinity (fresh water)
+    Sal1 = np.r_[0, st.Sal1[l]]
+    lamsal = np.r_[0, (st.lamw[l] - C.lamw0) / C.cw_m_row0 * C.alsal + C.lamsal0]
+    dhwp = r["precip"] * dt
+    dhwe = -r["state"]["Elatent"] / (C.Lwv * C.row0) * dt
+    Sal2 = s_diff(Sal1, dt, r["dhw"], r["dhw0"], dhwp, dhwe, lamsal,
+                  np.r_[0, ss.bathym.area_int[l]],
+                  np.r_[0, ss.bathym.area_half[l]], np.r_[0, grid.ddz],
+                  float(st.h1[l]), np.r_[0, grid.dzeta_int], grid.ddz05, M)
+
+    preswat = np.r_[0, ss.bathym.preswat[l]]
+    row2 = water_dens_ts(Tw2, Sal2, preswat)
+
+    # k-epsilon
+    ke = ss.ke
+    ke.e1 = np.r_[0, st.E[l]]
+    ke.eps1 = np.r_[0, st.eps[l]]
+    ke.u1 = np.r_[0, ss.mom.u1]
+    ke.v1 = np.r_[0, ss.mom.v1]
+    ke.um = np.zeros(M + 2)
+    ke.vm = np.zeros(M + 2)
+    ke.u2 = np.r_[0, r["mom"].u2]
+    ke.v2 = np.r_[0, r["mom"].v2]
+    ke.tw1 = np.r_[0, st.Tw1[l]]
+    ke.tw2 = Tw2
+    ke.sal1 = Sal1
+    ke.sal2 = Sal2
+    ke.row = np.r_[0, ss.mom.row]
+    ke.row2 = row2
+    ke.h1 = float(st.h1[l])
+    ke.dhw = r["dhw"]
+    ke.dhw0 = r["dhw0"]
+    ke.vol = float(ss.bathym.vol[l])
+    ke.botar = float(ss.bathym.botar[l])
+    ke.b0 = 0.0
+    ke.tau_air = float(r["mom"].tau_air)
+    ke.tau_wav = float(r["mom"].tau_wav)
+    ke.tau_i = float(r["mom"].tau_i or 0.0) if getattr(r["mom"], "tau_i", None) is not None else 0.0
+    ke.tau_gr = float(r["mom"].tau_gr)
+    ke.uwind = float(r["uwind"])
+    ke.vwind = float(r["vwind"])
+    ke.fetch = float(np.atleast_1d(params.fetch)[l])
+    ke.roughness = float(r["sc"]["roughness"])
+    ke.knum = np.zeros(M + 2)
+    ke.veg_sw = np.zeros(M + 2)
+    ke = k_epsilon(ke, dt, dt_keps=dt, nstep_keps=1, params=ss.ke_params)
+
+    # eddy diffusivity and turbulence diagnostics
+    lamw_new = C.lamw0 + np.maximum(ke.kt[1:], 0.0)
+    k_turb = np.array([
+        -0.5 * lamw_new[i] / C.cw_m_row0
+        * (Tw2[i + 2] + st.Tw1[l][i + 1] - Tw2[i + 1] - st.Tw1[l][i])
+        / (grid.ddz[i] * float(st.h1[l]))
+        for i in range(M)])
+    eflux0_kinem = float(r["state"]["eflux0_kinem"])
+    turb_density_flux = float(ddens_dtemp(st.Tw1[l][0], 0.0) * eflux0_kinem)
+    ts = turb_scales(
+        ss.mom.row, grid.ddz, grid.ddz[:-1] + grid.ddz[1:], grid.dzeta_int,
+        grid.dzeta_05int, float(st.h1[l]), M, Tw2[1:], Sal2[1:],
+        np.r_[0, r["mom"].u2][1:], np.r_[0, r["mom"].v2][1:],
+        lamw_new, lamsal, k_turb, np.zeros(M), eflux0_kinem,
+        turb_density_flux, C.g / C.row0 * turb_density_flux,
+        float(r["mom"].tau_air - r["mom"].tau_wav),
+        float(np.atleast_1d(params.kor)[l]), np.asarray(r["integr"]),
+        ss.bathym.area_int[l], ss.bathym.Lx[l], ss.bathym.Ly[l],
+        float(ss.bathym.vol[l]), grid.dzeta_int * float(st.h1[l]),
+        grid.ddz05, -0.15063272953663126, 0.7778285184375)
+
+    lay = advance_case1(
+        SimpleNamespace(h1=np.array([st.h1[l]]), ls1=np.array([0.0])),
+        np.array([r["dhw"]]))
+    return dict(
+        Tw1=Tw2[1:], Sal1=Sal2[1:], Tsoil1=ss.soil.Tsoil1[1:, 1:],
+        h1=float(lay["h1"][0]), Elatent=float(r["state"]["Elatent"]),
+        eflux0_kinem=eflux0_kinem, E1=ke.e1[1:], eps1=ke.eps1[1:],
+        lamw=lamw_new, kt=ke.kt[1:], row2=row2[1:], lsh=r["lsh"],
+        Tsurf3=r["Tsurf3"], dhw=r["dhw"], dhw0=r["dhw0"],
+        turb=ts, Tsoil3=ss.soil.Tsoil3[1:, 1:], dhwfsoil=ss.soil.dhwfsoil)

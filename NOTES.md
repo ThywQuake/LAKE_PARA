@@ -457,3 +457,20 @@ Two forcing details were fixed:
 Result: `Tsurf3 = 24.96465085110656` (probe 24.96465085113388, diff 2.7e-11)
 and `Bal3 = -0.1806500354` (probe -0.1806484678).  Test
 `tests/test_m3_step.py`; suite **32 passed**.
+
+## M3: full case-1 step runs; first probe comparison
+
+`step.step_case1` now runs the complete open-water chain
+(`BATHYMETRY → DENSITY → MOMENTUM → SOIL → T_SOLVER → SOILFORLAKE → S_DIFF →
+K_EPSILON → TURB_SCALES → layers`).
+
+Against probe step 2 (`LAKE_entry`):
+
+- `Tw1` max diff **0.022 K** (surface 0.0034 K);
+- `Tsoil1` max diff **0.059 K**;
+- `h1` 22.66000 vs 22.65977 (2.3e-4 m).
+
+The remaining `h1` difference is the initial `dhw`: the first step's
+`dhw` uses the previous `Elatent` (0 in our state), while the probe's step-2
+water depth already includes a small evaporative loss.  Test
+`tests/test_m3_step.py`; suite **33 passed**.
