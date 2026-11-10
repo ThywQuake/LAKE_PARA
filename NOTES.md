@@ -620,3 +620,17 @@ tag (e.g. `KE_in_1`, `KE_in_2`) so each step can be compared unambiguously.
   The next step is to compare the step-4320 `KE_in/KE_out` fields and check
   the SAVE-local carries (`Buoyancy1`, `FTKES/FTKEB`, `E_min`, `i_entrain`,
   `Eseiches`, `AG`, `knum`).
+
+## M3: MAJOR density-call bug fixed — 1 day now 0.010 K
+
+`water_dens_ts(temp, sal, row0=C.row0)` takes `row0` as the third argument, not
+pressure.  `step.py` was passing `preswat` (~1e5), producing densities
+~1e5 kg/m3 instead of ~1000.  After calling it correctly:
+
+- 1-day `summer1d` (4320 steps) max depth error **0.0099 K** (was 0.267 K),
+  surface 25.371 vs 25.361 (+0.010 K).  This is inside the plan's 0.05 K/day
+  tolerance.
+- The 180-step and 1-day drift were therefore mostly this single unit bug,
+  not K_EPSILON.
+
+Next: 60-day `summer60d` run and comparison.

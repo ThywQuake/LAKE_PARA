@@ -49,6 +49,7 @@ class StepState:
     surftyp_prev: int = 0
     cdmw: float = 1.0e-15
     ke_trace: list = field(default_factory=list)
+    trace_ke: bool = False
 
 
 def _zsoil_geom(params, grid, l, st, bathym):
@@ -97,8 +98,7 @@ def build_step_state(params, grid, l=0):
     soil.wi1[1:, 1:] = st.wi1[l]
     soil_cond_heat_coef(soil, sp, is_=params.nsoilcols)
 
-    row = water_dens_ts(np.r_[0, st.Tw1[l]], np.r_[0, st.Sal1[l]],
-                        np.r_[0, bathym.preswat[l]])
+    row = water_dens_ts(np.r_[0, st.Tw1[l]], np.r_[0, st.Sal1[l]])
     mom_params = MomentumParams(
         M=params.M, ddz=grid.ddz, ddz05=grid.ddz05,
         dzeta_int=grid.dzeta_int, dzeta_05int=grid.dzeta_05int,
@@ -234,7 +234,7 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
         ss.mom.v1 = np.array(ss.mom.v2)
     ss.mom.Tw1 = st.Tw1[l]
     ss.mom.Sal1 = st.Sal1[l]
-    ss.mom.row = water_dens_ts(st.Tw1[l], st.Sal1[l], ss.bathym.preswat[l])
+    ss.mom.row = water_dens_ts(st.Tw1[l], st.Sal1[l])
     ss.mom.E1 = st.E[l]
     ss.mom.eps1 = st.eps[l]
     if ss.ke.k2 is not None:
@@ -311,7 +311,7 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
                   float(st.h1[l]), np.r_[0, grid.dzeta_int], grid.ddz05, M)
 
     preswat = np.r_[0, ss.bathym.preswat[l]]
-    row2 = water_dens_ts(Tw2, Sal2, preswat)
+    row2 = water_dens_ts(Tw2, Sal2)
 
     # k-epsilon
     ke = ss.ke
@@ -346,7 +346,8 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ke.knum = np.zeros(M + 2)
     ke.veg_sw = np.zeros(M + 2)
     import copy as _copy
-    ss.ke_trace.append(_copy.deepcopy(ke))
+    if ss.trace_ke:
+        ss.ke_trace.append(_copy.deepcopy(ke))
     ke = k_epsilon(ke, dt, dt_keps=dt, nstep_keps=1, params=ss.ke_params)
     ss.ke = ke
 
