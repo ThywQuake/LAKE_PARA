@@ -91,3 +91,34 @@ ice at step 416160) and is kept as the shallow reference.
   instead of setting the switch, to test the strongest case; a run with
   `ifbubble 0` is equivalent for the thermodynamic comparison.
 
+
+## M1: skeleton and the first state/grid/forcing checks
+
+**The first `LAKE` call is at `nstep = 0`.**  `INIT_VAR` sets `nstep = 0`; the
+first call initialises and advances one step, and the next call (`nstep = 1`)
+loads that state.  The probe tag `INITVAR` (inside `INIT_VAR`) is therefore the
+raw initial state, while `LAKE_entry` at step 1 is the state **after** the
+first step.  M1 compares `init_state` with `INITVAR` at step 0; the first JAX
+`step` produces the step-1 state.
+
+**Fortran default-real literals are single precision.**  In
+`Tsoil1(i,j) = Tw1(k) + (Tbb0-Tw1(k))*(1.-exp(-10.*float(i-1)/float(ns-1)))`
+the argument of `exp` is single precision; a float64-only port differs by up to
+5e-7 K.  `state.py` reproduces the single-precision argument and the
+single-precision `1 - exp`; the side soil columns then match the probe exactly.
+This is a warning for the plan's 1e-10 routine tolerance: many expressions in
+the Fortran source use default-real literals and `float()`, so a pure-float64
+port will differ at the 1e-7 level unless each expression is checked.  M1 uses
+1e-12 for `Tw1`/`Sal1`, 1e-6 for `Tsoil1`/`zsoil`, and 1e-5 for `tempair`; the
+per-routine tolerances will be revisited in M2/M3.
+
+**Forcing time.**  Model step `nstep` uses the forcing at `t = (nstep+1)*dt`
+(step 1: 40 s), interpolating between the hourly records `ti` and `ti+1`.
+Verified at steps 1, 2, 3, 180: shortwave/longwave match exactly, `tempair`
+within 6.1e-6 K (constant offset, likely single/pow rounding in the Fortran
+reader).
+
+**M1 tests:** `tests/test_m1.py` — initial state (`Tw1` 3.6e-15, `Sal1`
+exact, `Tsoil1` 1e-6), grid (`ddz`/`dzeta` 1e-12, `zsoil` 1e-6, `zsoilcols`
+exact), forcing, and batch stacking.  The probe files live under
+`lakematrix/scratch/m0.4/` (git-ignored); the tests skip when they are absent.

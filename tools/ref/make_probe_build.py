@@ -27,7 +27,12 @@ LAKEBATCH = ROOT / "lakebatch"
 SRC = LAKEBATCH / "core" / "source"
 TEMPLATE = Path(__file__).with_name("lm_probe.f90")
 
-ENTRY_VARS = ["Tw1", "Ti1", "Tis1", "Tsoil1", "h1", "l1", "hs1", "ls1", "snowmass"]
+ENTRY_VARS = [
+    "Tw1", "Ti1", "Tis1", "Tsoil1", "Sal1", "h1", "l1", "hs1", "ls1", "snowmass",
+    "ddz", "ddz05", "dzeta_int", "z_full", "zsoil", "zsoilcols(1:nsoilcols+1,ix,iy)",
+    "tempair", "humair", "pressure", "uwind", "vwind", "precip",
+    "longwave", "shortwave", "cloud", "netrad", "time", "nstep",
+]
 
 
 def call_end(lines, start):
@@ -66,8 +71,13 @@ def patch_lake(path):
             continue
         if "call UPDATE_CURRENT_TIMESTEP" in line:
             end = call_end(lines, i)
+            out.append('  call LM_PROBE("PRE_LOAD", "Tw1", Tw1)')
+            out.append('  call LM_PROBE("PRE_LOAD", "z_full", z_full)')
+            out.append('  call LM_PROBE("PRE_LOAD", "ip_zT", ip%zTinitprof)')
+            out.append('  call LM_PROBE("PRE_LOAD", "ip_T", ip%Tinitprof)')
             out.extend(lines[i:end + 1])
             out.extend(f'  call LM_PROBE("LAKE_entry", "{v}", {v})' for v in ENTRY_VARS)
+            out.append('  call LM_PROBE("POST_LOAD", "Tw1", Tw1)')
             i = end + 1
             continue
         if "call UPDATE_NEXT_TIMESTEP" in line:
@@ -81,6 +91,27 @@ def patch_lake(path):
         raise SystemExit("could not find 'use LB_POINT_CTX' in lake.f90")
     path.write_text("\n".join(out) + "\n")
 
+
+
+
+def patch_init_var(path):
+    s = path.read_text()
+    if "LM_PROBE_MOD" not in s:
+        s = s.replace("  use GRID_OPERATIONS_LAKE, only : LININTERPOL",
+                      "  use GRID_OPERATIONS_LAKE, only : LININTERPOL\n  use LM_PROBE_MOD, only : LM_PROBE")
+    s = s.replace("& z_full,Tw1,M+1,flag,.true.)",
+                  "& z_full,Tw1,M+1,flag,.true.)\n  call LM_PROBE(\"INITVAR\", \"Tw1\", Tw1)", 1)
+    s = s.replace("& z_full,Sal1,M+1,flag,.true.)",
+                  "& z_full,Sal1,M+1,flag,.true.)\n  call LM_PROBE(\"INITVAR\", \"Sal1\", Sal1)", 1)
+    s = s.replace("  deallocate(pressoil)",
+                  "  call LM_PROBE(\"INITVAR\", \"Tsoil1\", Tsoil1)\n"
+                  "  call LM_PROBE(\"INITVAR\", \"h1\", h1)\n"
+                  "  call LM_PROBE(\"INITVAR\", \"l1\", l1)\n"
+                  "  call LM_PROBE(\"INITVAR\", \"hs1\", hs1)\n"
+                  "  call LM_PROBE(\"INITVAR\", \"ls1\", ls1)\n"
+                  "  call LM_PROBE(\"INITVAR\", \"snowmass\", snowmass)\n"
+                  "  deallocate(pressoil)", 1)
+    path.write_text(s)
 
 def patch_cmake(path):
     text = path.read_text()
@@ -115,6 +146,7 @@ def main():
     patch_cmake(out / "build" / "CMakeLists.txt")
 
     patch_lake(out / "source" / "model" / "lake.f90")
+    patch_init_var(out / "source" / "model" / "init_var_mod.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:
