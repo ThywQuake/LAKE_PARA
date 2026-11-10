@@ -14,3 +14,4 @@ probe-build-local/
 # macOS
 .DS_Store
 .uvcache/
+scratch/
