@@ -474,3 +474,16 @@ The remaining `h1` difference is the initial `dhw`: the first step's
 `dhw` uses the previous `Elatent` (0 in our state), while the probe's step-2
 water depth already includes a small evaporative loss.  Test
 `tests/test_m3_step.py`; suite **33 passed**.
+
+## M3: `run_case1` and the 180-step drift
+
+- `step.run_case1` loops `step_case1`, carries `Tw1/Sal1/Tsoil1/h1/E/eps/
+  lamw/Elatent/dhwfsoil`, and runs 180 steps in ~5 s.
+- After one step `Tw1` matches the step-2 probe to 0.022 K; after 3 steps the
+  error grows to 0.011 K, and after 180 steps the surface is 24.384 C vs the
+  reference 24.721 C (0.337 K).
+- `h1` after 3 steps is 2.3e-5 m lower than the probe; `Tsoil1` differs by
+  0.059 K after one step (soil `SOILFORLAKE` moisture/phase sub-path is the
+  unvalidated part).
+- Next: validate `SOILFORLAKE`'s `Tsoil3/wl4/dhwfsoil` against a probe (the
+  subagent's missing check), then re-run the 180-step/1-day comparison.

@@ -319,7 +319,7 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0):
     ke = k_epsilon(ke, dt, dt_keps=dt, nstep_keps=1, params=ss.ke_params)
 
     # eddy diffusivity and turbulence diagnostics
-    lamw_new = C.lamw0 + np.maximum(ke.kt[1:], 0.0)
+    lamw_new = C.lamw0 + np.maximum(ke.kt[1:M + 1], 0.0)
     k_turb = np.array([
         -0.5 * lamw_new[i] / C.cw_m_row0
         * (Tw2[i + 2] + st.Tw1[l][i + 1] - Tw2[i + 1] - st.Tw1[l][i])
@@ -349,3 +349,28 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0):
         lamw=lamw_new, kt=ke.kt[1:], row2=row2[1:], lsh=r["lsh"],
         Tsurf3=r["Tsurf3"], dhw=r["dhw"], dhw0=r["dhw0"],
         turb=ts, Tsoil3=ss.soil.Tsoil3[1:, 1:], dhwfsoil=ss.soil.dhwfsoil)
+
+
+def run_case1(params, grid, rows, nsteps=180, l=0, callback=None):
+    """Run `nsteps` case-1 steps from the initial state."""
+    ss = build_step_state(params, grid, l)
+    st = ss.state
+    dt = params.dt
+    out = []
+    for n in range(1, nsteps + 1):
+        r = step_case1(ss, params, grid, rows, n, l)
+        st.Tw1[l] = r["Tw1"]
+        st.Sal1[l] = r["Sal1"]
+        st.Tsoil1[l] = r["Tsoil1"]
+        st.h1[l] = r["h1"]
+        st.E[l] = r["E1"]
+        st.eps[l] = r["eps1"]
+        st.lamw[l] = r["lamw"]
+        st.time[l] += dt
+        st.nstep[l] = n
+        ss.Elatent = r["Elatent"]
+        ss.soil.dhwfsoil = r["dhwfsoil"]
+        out.append(r)
+        if callback is not None:
+            callback(n, ss, r)
+    return ss, out
