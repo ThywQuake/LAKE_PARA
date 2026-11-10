@@ -581,3 +581,14 @@ Using the step-2 `KE_in/KE_out` probes:
 
 Next: trace our `ke` input fields at step 2 against the `KE_in` probe field
 by field; the missing/adjusted `eps1` (or another work array) is the cause.
+
+## M3: 180-step comparison with n=1 first step
+
+Both `run_case1` variants (n=0 or n=1 first step) give the same 180-step
+result: surface 24.384 C vs reference 24.721 C, 0.5/1 m +0.037/+0.087 K.
+The step-1 output matches the probe; the drift starts when `K_EPSILON` is
+called the second time.  The step-2 `KE_in` probe in the current probe build
+appears to mix records from several K_EPSILON calls (`read_probe_sequence`
+keeps the last record per tag), so the `eps1=6.8e-6` reading is not yet a
+trustworthy target.  Next: rebuild a probe that writes the call index into the
+tag (e.g. `KE_in_1`, `KE_in_2`) so each step can be compared unambiguously.
