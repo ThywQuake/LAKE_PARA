@@ -662,3 +662,19 @@ the first diverging field (likely `u1/u2`, `k2`, or `eps1` carry).
   `addPrecipToSnow` is **not ported** (needed if precipitation/snow
   accumulation is modelled).
 - M4 wiring (case-2/case-3 step, layer transitions) is next.
+
+## M3: first K_EPSILON divergence at day 1
+
+After the density fix, the 1-day thermal profile matches (0.010 K), but the
+step-4320 `KE_in` probe shows:
+
+- `u1`/`u2` differ by **0.0039 / 0.0038 m/s** (large relative to the ~1e-2
+  velocities);
+- `lamw` differs by **4189** (out `kt` by 347);
+- `Tw1` probe difference 0.070 K (timing/entry offset; the `water_temp`
+  daily output matches to 0.010 K).
+
+So the k-epsilon structure drift is driven by the **velocity field**, not by
+the thermal state.  Next: compare the day-1 `MOMENTUM_SOLVER` state
+(`u2/v2`, `taux/tauy`, `velfrict`, `alphax/alphay`, seiche fields) against a
+day-1 probe and carry any missing state.
