@@ -248,6 +248,8 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ss.mom.dhw0 = dhw0
     mom_res = momentum_solver(ss.mom, ss.mom_params, dt)
     ss.mom = mom_res.state
+    ss.mom.u1 = np.array(mom_res.u2, copy=True)
+    ss.mom.v1 = np.array(mom_res.v2, copy=True)
 
     Tw1 = np.r_[0, st.Tw1[l]]
     Tsoil1 = ss.soil.Tsoil1

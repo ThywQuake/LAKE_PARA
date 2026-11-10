@@ -678,3 +678,15 @@ So the k-epsilon structure drift is driven by the **velocity field**, not by
 the thermal state.  Next: compare the day-1 `MOMENTUM_SOLVER` state
 (`u2/v2`, `taux/tauy`, `velfrict`, `alphax/alphay`, seiche fields) against a
 day-1 probe and carry any missing state.
+
+## M3: momentum u2 carry — 3.33-day error 0.033 K
+
+The `MomentumState` returned by `momentum_solver` has no `u2`; the code stored
+`mom_res.state` but never copied `mom_res.u2/v2` into `u1/v1`, so every step
+restarted momentum from the previous `u1` (initial profile).  Carrying
+`u1=u2`, `v1=v2` after each solve:
+
+- 1 day: max 0.0135 K (still inside 0.05 K);
+- 3.33 days: max **0.033 K** (was 0.123 K), all depths <= 0.033.
+
+The 60-day job was restarted with this fix.
