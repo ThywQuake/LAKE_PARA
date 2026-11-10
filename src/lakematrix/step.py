@@ -45,6 +45,8 @@ class StepState:
     buo: float = 0.0
     lsh: object = None
     bathym: object = None
+    Tsurf_prev: float = -999.0
+    surftyp_prev: int = 0
 
 
 def _zsoil_geom(params, grid, l, st, bathym):
@@ -191,29 +193,8 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
     extinct[:, 3] = 1.087e3
     _, integr = rad_update(extinct, grid.ddz05[:M] * float(st.h1[l]), flux0)
 
-    # water-depth increments use the previous step's latent heat flux
-    dhwp = precip * dt
-    dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
-    dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
-    dhw0 = dhwp + dhwe
-
-    # momentum (uses the previous step's latent heat flux for dhw)
-    ss.mom_params.uwind = float(uwind)
-    ss.mom_params.vwind = float(vwind)
-    ss.mom_params.cdmw = 1.0e-3
-    ss.mom_params.fetch = fetch
-    ss.mom.u1 = np.full(M + 1, 1.0e-5)
-    ss.mom.v1 = np.zeros(M + 1)
-    ss.mom.Tw1 = st.Tw1[l]
-    ss.mom.Sal1 = st.Sal1[l]
-    ss.mom.row = water_dens_ts(st.Tw1[l], st.Sal1[l], ss.bathym.preswat[l])
-    ss.mom.h1 = float(st.h1[l])
-    ss.mom.dhw = dhw
-    ss.mom.dhw0 = dhw0
-    mom_res = momentum_solver(ss.mom, ss.mom_params, dt)
-    ss.mom = mom_res.state
-
-    # soil columns at the current water temperature
+    # soil columns at the current water temperature (the soil fluxes also
+    # determine dhwfsoil, which enters this step's dhw)
     ss.soil.Tw1 = np.r_[0, st.Tw1[l]]
     ss.soil.Ti1 = np.r_[0, st.Ti1[l]]
     ss.soil.Tis1 = np.r_[0, st.Tis1[l]]
@@ -222,6 +203,29 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
     soil_cond_heat_coef(ss.soil, ss.soil_params, is_=params.nsoilcols)
     ss.soil = soilcolstemp(ss.soil, ss.soil_params, dt)
     lsh = laterheat(ss.soil, ss.soil_params, ss.soil.soilflux, onlywater=True)
+
+    # water-depth increments
+    dhwp = precip * dt
+    dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
+    dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
+    dhw0 = dhwp + dhwe
+
+    # momentum
+    ss.mom_params.uwind = float(uwind)
+    ss.mom_params.vwind = float(vwind)
+    ss.mom_params.cdmw = 1.0e-3
+    ss.mom_params.fetch = fetch
+    if getattr(ss.mom, "u2", None) is not None:
+        ss.mom.u1 = np.array(ss.mom.u2)
+        ss.mom.v1 = np.array(ss.mom.v2)
+    ss.mom.Tw1 = st.Tw1[l]
+    ss.mom.Sal1 = st.Sal1[l]
+    ss.mom.row = water_dens_ts(st.Tw1[l], st.Sal1[l], ss.bathym.preswat[l])
+    ss.mom.h1 = float(st.h1[l])
+    ss.mom.dhw = dhw
+    ss.mom.dhw0 = dhw0
+    mom_res = momentum_solver(ss.mom, ss.mom_params, dt)
+    ss.mom = mom_res.state
 
     Tw1 = np.r_[0, st.Tw1[l]]
     Tsoil1 = ss.soil.Tsoil1
@@ -247,7 +251,9 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
     def fn(t):
         return heatbalance_water(t, ctx)
 
-    r = t_solver(fn, nstep, 4, 0, 0.0)
+    r = t_solver(fn, nstep, 4, ss.surftyp_prev, ss.Tsurf_prev)
+    ss.Tsurf_prev = r["Tsurf3"]
+    ss.surftyp_prev = 4
     return dict(Tsurf3=r["Tsurf3"], state=r["state"], iter=r["iter"],
                 Bal3=r["Bal3"], dhw=dhw, dhw0=dhw0, integr=integr, lsh=lsh,
                 sc=sc, f=f, ctx=ctx, mom=mom_res, precip=precip,

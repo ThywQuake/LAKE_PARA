@@ -487,3 +487,16 @@ water depth already includes a small evaporative loss.  Test
   unvalidated part).
 - Next: validate `SOILFORLAKE`'s `Tsoil3/wl4/dhwfsoil` against a probe (the
   subagent's missing check), then re-run the 180-step/1-day comparison.
+
+## M3: SOILFORLAKE is probe-exact; step handoff still drifts
+
+- `SOILFORLAKE` now validated against the `SOILF_in/out` probe: `Tsoil1`,
+  `Tsoil3`, `wl1`, `wi1`, `wl4`, `wi2` all **0.0**; `dhwfsoil` exact.
+  This closes the subagent's "moisture/phase unverified" gap.
+- `dhw` is now computed **after** `SOILCOLSTEMP`, using the current
+  `dhwfsoil`; step-2 `h1` matches the probe to 6e-7 m.
+- Despite that, the step-2 `Tw1` difference is still 0.022 K and grows to
+  0.011 K by step 3; the handoff `Tw2 → Tw1` (Fortran
+  `UPDATE_NEXT_TIMESTEP`) is the next suspect, since `T_SOLVER` itself
+  matches the probe to 1e-11.
+- Test: `tests/test_m3_soilforlake.py`; suite **34 passed**.

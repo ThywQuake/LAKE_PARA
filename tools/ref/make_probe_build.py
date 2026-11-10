@@ -470,6 +470,30 @@ def patch_kepsilon_internal(path):
     s = s[:end] + outs + s[end:]
     path.write_text(s)
 
+
+
+def patch_soilforlake_lake(path):
+    lines = path.read_text().splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if 'call SOILFORLAKE' not in line:
+            continue
+        end = i
+        for j in range(i, min(i + 6, len(lines))):
+            if lines[j].rstrip().endswith(')'):
+                end = j
+                break
+        pre = "".join(f'  call LM_PROBE("SOILF_in", "{n}", {n})\n' for n in
+                      ("Tsoil1", "Tsoil2", "Tsoil3", "wl1", "wi1", "wl4",
+                       "wi2", "Sals1", "csoil", "rosoil", "lamsoil",
+                       "dhwfsoil", "h1", "l1", "ls1", "Tw1"))
+        post = "".join(f'  call LM_PROBE("SOILF_out", "{n}", {n})\n' for n in
+                       ("Tsoil1", "Tsoil3", "wl1", "wi1", "wl4", "wi2",
+                        "dhwfsoil"))
+        lines.insert(end + 1, post)
+        lines.insert(i, pre)
+        path.write_text("".join(lines))
+        return
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -519,6 +543,7 @@ def main():
     patch_bathym2(out / "source" / "model" / "lake.f90")
     patch_kepsilon_lake(out / "source" / "model" / "lake.f90")
     patch_kepsilon_internal(out / "source" / "model" / "turb_mod.f90")
+    patch_soilforlake_lake(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:
