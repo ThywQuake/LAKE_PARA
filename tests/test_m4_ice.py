@@ -28,3 +28,32 @@ def test_ice_tdiff_smoke():
     assert np.all(np.isfinite(st.Ti2))
     assert np.all(np.isfinite(st.Tw2))
     assert st.Ti2[1] > -10.0
+
+
+def test_ice_surface_solver_smoke():
+    import numpy as np
+    from lakematrix.physics.surface import IceSurfaceContext, heatbalance_ice, surf_char
+    from lakematrix.physics.tsolver import t_solver
+
+    case = read_case(ROOT / "ref" / "v1" / "summer1d")
+    grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
+                       case.soil_depth, 0.02)
+    ss = build_step_state(case, grid)
+    ice = build_ice_state(ss, case, grid)
+    ice.l1 = 0.5
+    ice.h1 = 22.16
+    ice.Ti1[1:] = np.linspace(-5.0, 0.0, case.Mice + 1)
+    ice.Ti2[1:] = ice.Ti1[1:]
+    sc = surf_char(2, 2016, 8, 1, 4.0, 56.0, 1000.0, 1.0, 0.01)
+    ctx = IceSurfaceContext(
+        ice=ice, snow=0, water=1, dt=20.0, fetch=1000.0, uwind=1.0,
+        vwind=0.0, u=0.0, v=0.0, tempair=15.0, pressure=100000.0,
+        humair=0.01, zref=2.0, roughness=sc["roughness"],
+        relhums=sc["relhums"], aM=sc["aM"], bM=sc["bM"], l1=0.5,
+        longwave=300.0, shortwave=0.0, netrad=-1.0, cloud=-1.0,
+        albedo=sc["albedo"], albedo_lw=sc["albedo_lw"],
+        emissivity=sc["emissivity"], radwater_integr=np.zeros(41),
+        radice_integr=np.zeros(2))
+    r = t_solver(lambda t: heatbalance_ice(t, ctx), 1, 2, 0, 0.0)
+    assert np.isfinite(r["Tsurf3"])
+    assert -20.0 < r["Tsurf3"] < 2.0

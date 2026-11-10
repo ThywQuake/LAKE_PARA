@@ -117,7 +117,8 @@ def heatbalance(dHdt, Radbal, Radbal_surf, eflux, convect_flux, hflux, Elatent):
     `radbalance`; this function only applies the Fortran sign convention.
     """
     HB = dHdt - (Radbal - hflux - Elatent) + eflux + convect_flux
-    eflux0 = Radbal_surf - hflux - Elatent
+    rbs = Radbal if Radbal_surf is None else Radbal_surf
+    eflux0 = rbs - hflux - Elatent
     eflux0_kinem = eflux0 / C.cw_m_row0
     return HB, eflux0, eflux0_kinem
 
