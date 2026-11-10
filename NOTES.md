@@ -380,3 +380,13 @@ and `lsh%water` matches `TD_in` to 3.4e-12.  Test:
   first-call state field; `e2/eps2` need debugging.
 - The K_EPSILON port is therefore **not yet validated**; the probe and replay
   setup are in place for the next debugging round.
+
+## M3: K_EPSILON debugging note
+
+The first replay (v25) differs in `e2` (1.5e-4), `eps2` (1.9e-3),
+`k2` (2.6e-3) and `kt` (3.4e3).  An attempt to probe `CE/CEt/s/gen/f` at the
+`lake.f90` call site failed: those are `turb_mod.f90` locals/module arrays and
+are not in `lake.f90` scope (`c_eps3`/`cet` have no IMPLICIT type there).  The
+next debugging step is a probe **inside** `K_EPSILON` (`turb_mod.f90`) for
+`CE/CEt/s/gen/f/c_eps*` and a comparison of the stability functions; the
+v25 `KE_in/KE_out` probes remain the entry-level reference.
