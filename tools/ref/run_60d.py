@@ -25,7 +25,7 @@ def cb(n, ss, r):
                              Tsoil1=np.array(r["Tsoil1"], copy=True),
                              h1=float(r["h1"]), lamw=np.array(r["lamw"], copy=True)))
 
-ss, _ = run_case1(case, grid, rows, 60 * 4320, callback=cb)
+ss, _ = run_case1(case, grid, rows, 60 * 4320, callback=cb, store=False)
 np.savez(ROOT / "scratch" / "m3_summer60d.npz",
          n=np.array([p["n"] for p in profiles]),
          Tw1=np.array([p["Tw1"] for p in profiles]),

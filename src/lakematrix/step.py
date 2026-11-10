@@ -395,7 +395,7 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
         turb=ts, Tsoil3=ss.soil.Tsoil3[1:, 1:], dhwfsoil=ss.soil.dhwfsoil)
 
 
-def run_case1(params, grid, rows, nsteps=180, l=0, callback=None):
+def run_case1(params, grid, rows, nsteps=180, l=0, callback=None, store=True):
     """Run `nsteps` case-1 steps from the initial state."""
     ss = build_step_state(params, grid, l)
     st = ss.state
@@ -414,7 +414,8 @@ def run_case1(params, grid, rows, nsteps=180, l=0, callback=None):
         st.nstep[l] = n
         ss.Elatent = r["Elatent"]
         ss.soil.dhwfsoil = r["dhwfsoil"]
-        out.append(r)
+        if store:
+            out.append(r)
         if callback is not None:
             callback(n, ss, r)
     return ss, out
