@@ -376,6 +376,31 @@ def patch_momentum_lake(path):
         lines.insert(pos, text)
     path.write_text("".join(lines))
 
+
+
+def patch_bathym2(path):
+    lines = path.read_text().splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if 'call BATHYMETRY' not in line:
+            continue
+        end = i
+        for j in range(i, min(i + 25, len(lines))):
+            if lines[j].rstrip().endswith(')'):
+                end = j
+                break
+        text = "".join(f'  call LM_PROBE("BATHY2", "{n}", {n})\n' for n in
+                       ("zsoilcols(1:nsoilcols+1,ix,iy)",
+                        "bathymsoil(1:nsoilcols+1,ix,iy)%area_int",
+                        "bathymsoil(1:nsoilcols,ix,iy)%area_half",
+                        "bathymsoil(1:nsoilcols+1,ix,iy)%itop",
+                        "bathymsoil(1:nsoilcols+1,ix,iy)%dzSL",
+                        "bathymsoil(1:nsoilcols+1,ix,iy)%ibot",
+                        "bathymsoil(1:nsoilcols+1,ix,iy)%icent",
+                        "bathymsoil(1:nsoilcols,ix,iy)%dzSLc"))
+        lines.insert(end + 1, text)
+        path.write_text("".join(lines))
+        return
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -422,6 +447,7 @@ def main():
     patch_t_solver(out / "source" / "model" / "t_solver_mod.f90")
     patch_turb_scales(out / "source" / "model" / "phys_func.f90")
     patch_momentum_lake(out / "source" / "model" / "lake.f90")
+    patch_bathym2(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

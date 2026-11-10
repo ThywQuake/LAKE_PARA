@@ -355,3 +355,15 @@ dhwfsoil`) is transcribed but not yet probe-validated.
   bit-exact validation used the probe's `BATHY_902_out`/`LAKE_exit`, not this
   function; the mismatch is in the newly written geometry or in the
   `SoilState` initialization, not in the validated heat coefficients.
+
+## M3: soil geometry fixed; LATERHEAT matches the probe
+
+The 1e20 `soilflux` / 2x `lsh` mismatch was **missing `Lx`/`Ly` on the soil
+`Bathym` objects**: `TSURFSOILCOL` needs the ellipse semi-axes of each soil
+column, and `bathym_levels` did not fill them.  `soil_bathymetry` now sets
+`Lx, Ly = LXLY(area_int, lakeform, cellipt)` for every soil column.
+
+After the fix, `Tsoilsurf = (24.34744, 19.28719, 10.03557, 7.99107)` for the
+four side columns (matching the probe's top `Tsoil1`), `soilflux` is finite,
+and `lsh%water` matches `TD_in` to 3.4e-12.  Test:
+`tests/test_m3_laterheat.py`; suite 30 passed.

@@ -113,8 +113,11 @@ def soil_bathymetry(params, grid, state, l=0):
     area_half = interp_profile(table[:, 0], table[:, 1], work3[None, :])[0]
 
     b = [Bathym() for _ in range(ncols + 2)]
+    lakeform = int(np.atleast_1d(params.lakeform)[l])
+    cellipt = float(np.atleast_1d(params.cellipt)[l])
     for i in range(1, ncols + 2):
         b[i].area_int = float(area_int[i - 1])
+        b[i].Lx, b[i].Ly = _lxly(float(area_int[i - 1]), lakeform, cellipt)
     for i in range(1, ncols + 1):
         b[i].area_half = float(area_half[i - 1])
 
