@@ -9,4 +9,4 @@ The specification is `../LAKEMATRIX-PLAN.en.md` (authoritative) and
 acceptance tolerances are defined there. `NOTES.md` records deviations from the
 specification and the measured errors.
 
-Status: M3 in progress: M2 done; `DIFF_COEF`/`T_DIFF` case 1 matches the Fortran probe exactly (49 calls). T_SOLVER next. Case 3 is not covered by the natural reference set; see `docs/reference_cases.md`.
+Status: M3 in progress: `T_DIFF` and the full `HEATBALANCE`/`T_SOLVER` reproduce the step-1 probes exactly (49 calls, Tsurf3 to 1e-10). Soil/momentum/turbulence/layers next. Case 3 is not covered by the natural reference set; see `docs/reference_cases.md`.

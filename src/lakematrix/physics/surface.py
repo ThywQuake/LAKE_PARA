@@ -186,3 +186,99 @@ def surf_char(surftyp, year, month, day, hour, phi, fetch, wind,
                 roughness=roughness, aM=aM, bM=bM,
                 emissivity=C.emissivityofwater, relhums=1.0,
                 velfrict_prev=velfrict_prev)
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class WaterSurfaceContext:
+    """Everything `HEATBALANCE` needs for a case-1 water surface.
+
+    Arrays are 1-based (index 0 unused), as in `tsolver.t_diff_water`.
+    """
+    Tw1: np.ndarray
+    Tsoil1: np.ndarray
+    lamw: np.ndarray
+    area_int: np.ndarray
+    area_half: np.ndarray
+    h1: float
+    ddz: np.ndarray
+    dhw: float
+    dhw0: float
+    PEMF: np.ndarray
+    pt_down_f: np.ndarray
+    lamsoil: np.ndarray
+    csoil: np.ndarray
+    rosoil: np.ndarray
+    dzs: np.ndarray
+    radwater_integr: np.ndarray   # Fortran 0-based
+    lsh_water: np.ndarray
+    dzeta_int: np.ndarray
+    ddz05: np.ndarray
+    M: int
+    ns: int
+    isoilcol: int
+    dt: float
+    fetch: float
+    uwind: float
+    vwind: float
+    u: float
+    v: float
+    tempair: float
+    pressure: float
+    humair: float
+    zref: float
+    roughness: float
+    relhums: float
+    aM: float
+    bM: float
+    l1: float
+    longwave: float
+    shortwave: float
+    netrad: float
+    cloud: float
+    albedo: float
+    albedo_lw: float
+    emissivity: float
+    soilbotflx: float = 0.0
+
+
+def heatbalance_water(Tsurf, ctx: WaterSurfaceContext):
+    """Run `T_DIFF` then the `HEATBALANCE` composition for a water surface.
+
+    Returns `(HB, state)` where `state` is a dict with `Tw2`, `Tsoil2`,
+    `eflux`, `dHdt`, `convect_flux`, `botflux`, `hflux`, `Elatent`,
+    `Radbal`, `Radbal_surf`, `eflux0`, `eflux0_kinem`.
+    """
+    from .tsolver import t_diff_water
+
+    Tw2, Tsoil2 = t_diff_water(
+        Tsurf, ctx.dt, ctx.Tw1, ctx.Tsoil1, ctx.lamw, ctx.area_int,
+        ctx.area_half, ctx.h1, ctx.ddz, ctx.dhw, ctx.dhw0, ctx.PEMF,
+        ctx.pt_down_f, ctx.lamsoil, ctx.csoil, ctx.rosoil, ctx.dzs,
+        ctx.radwater_integr, ctx.dzeta_int, ctx.ddz05, ctx.M, ctx.ns,
+        ctx.isoilcol, soilbotflx=ctx.soilbotflx, lsh_water=ctx.lsh_water)
+    ef, dh, conv, bot = heatfluxsurf_water(
+        ctx.Tw1[1:][None, :], Tw2[None, :], ctx.lamw[1:][None, :],
+        ctx.area_int[1:][None, :], ctx.area_half[1:][None, :],
+        np.array([ctx.h1]), ctx.ddz[1:], np.array([ctx.dhw0]), ctx.dt)
+    slm = senslatmom_fluxes(
+        Tsurf, ctx.fetch, ctx.uwind, ctx.vwind, ctx.u, ctx.v, ctx.tempair,
+        ctx.pressure, ctx.humair, ctx.zref, ctx.roughness,
+        relhums=ctx.relhums, aM=ctx.aM, bM=ctx.bM, l1=ctx.l1, h1=ctx.h1)
+    rb, rbs, sb, sr, swup = radbalance(
+        Tsurf, ctx.radwater_integr, np.zeros(2), WATER,
+        longwave=ctx.longwave, shortwave=ctx.shortwave, netrad=ctx.netrad,
+        cloud=ctx.cloud, humair=ctx.humair, pressure=ctx.pressure,
+        tempair=ctx.tempair, albedo=ctx.albedo, albedo_lw=ctx.albedo_lw,
+        emissivity=ctx.emissivity)
+    HB, eflux0, eflux0_kinem = heatbalance(
+        float(dh[0]), float(rb), float(rbs), float(ef[0]), float(conv[0]),
+        slm["hflux"], slm["Elatent"])
+    return HB, dict(Tw2=Tw2, Tsoil2=Tsoil2, eflux=float(ef[0]),
+                    dHdt=float(dh[0]), convect_flux=float(conv[0]),
+                    botflux=float(bot[0]), hflux=slm["hflux"],
+                    Elatent=slm["Elatent"], Radbal=float(rb),
+                    Radbal_surf=float(rbs), eflux0=eflux0,
+                    eflux0_kinem=eflux0_kinem)

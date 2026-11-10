@@ -117,3 +117,61 @@ def t_diff_water(Tsurf, dt, Tw1, Tsoil1, lamw, area_int, area_half, h1, ddz,
 
     Temp = _progonka_1based(a, b, c, d, nn)
     return Temp[1:M + 2], Temp[M + 1:M + ns + 1]
+
+
+def t_solver(fn, nstep, surftyp, surftyp_prev, Tsurf_prev, maxiter=20,
+             dt_scan=5.0, resid=1.0, templin=None):
+    """Surface-temperature scan + Chorde iteration (`T_SOLVER`).
+
+    `fn(Tsurf)` must run `T_DIFF` for that surface temperature and return
+    `(heat_balance, state_after_diff)`.  The returned `state` is the one from
+    the final `fn(Tsurf3)` call.  `templin` is only needed if the scan reaches
+    80 C (the linearised-heat-balance fallback).
+    """
+    if nstep > 1 and surftyp == surftyp_prev:
+        Tsurf2 = Tsurf_prev - 10.0
+    else:
+        Tsurf2 = -90.0
+
+    iterate = True
+    Bal1 = 1.0
+    Bal2 = 1.0
+    Tsurf1 = Tsurf2
+    state1 = state2 = None
+    Tsurf3 = Tsurf2
+    state3 = None
+    while Bal1 * Bal2 > 0.0 and iterate:
+        Tsurf1 = Tsurf2
+        Tsurf2 = Tsurf2 + dt_scan
+        Bal1, state1 = fn(Tsurf1)
+        Bal2, state2 = fn(Tsurf2)
+        if Tsurf2 > 80.0:
+            if templin is None:
+                raise RuntimeError("T_SOLVER scan exceeded 80 C and no templin")
+            Tsurf3 = templin(Tsurf_prev)
+            state3 = state2
+            iterate = False
+
+    it = 0
+    Bal3 = resid + 1.0
+    if Bal1 != 0.0 and Bal2 != 0.0 and iterate:
+        while abs(Bal3) > resid:
+            it += 1
+            if Bal1 != Bal3:
+                Bal1, state1 = fn(Tsurf1)
+            if Bal2 != Bal3:
+                Bal2, state2 = fn(Tsurf2)
+            Tsurf3 = (Tsurf1 * Bal2 - Tsurf2 * Bal1) / (Bal2 - Bal1)
+            Bal3, state3 = fn(Tsurf3)
+            if Bal1 * Bal3 < 0.0:
+                Tsurf2, Bal2 = Tsurf3, Bal3
+            elif Bal2 * Bal3 < 0.0:
+                Tsurf1, Bal1 = Tsurf3, Bal3
+            if it > maxiter:
+                break
+    elif Bal1 == 0.0:
+        Tsurf3, state3 = Tsurf1, state1
+    elif Bal2 == 0.0:
+        Tsurf3, state3 = Tsurf2, state2
+
+    return dict(Tsurf3=Tsurf3, state=state3, iter=it, Bal3=Bal3)

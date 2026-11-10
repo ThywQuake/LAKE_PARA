@@ -293,6 +293,20 @@ def patch_tdiff(path):
     s = s[:pos2] + outs + s[pos2:]
     path.write_text(s)
 
+
+
+def patch_t_solver(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE T_SOLVER")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    end = s.index("END SUBROUTINE T_SOLVER")
+    outs = "".join(f'  call LM_PROBE("TS_out", "{n}", {n})\n' for n in
+                   ("Tsurf3", "iter", "Bal3"))
+    outs += '  call LM_PROBE("TS_out", "surftyp", surftyp(ix,iy))\n'
+    s = s[:end] + outs + s[end:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -336,6 +350,7 @@ def main():
     patch_radbalance(out / "source" / "model" / "heatbalsurf_mod.f90")
     patch_surf_char(out / "source" / "model" / "t_solver_mod.f90")
     patch_tdiff(out / "source" / "model" / "t_solver_mod.f90")
+    patch_t_solver(out / "source" / "model" / "t_solver_mod.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

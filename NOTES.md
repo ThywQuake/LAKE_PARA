@@ -254,3 +254,20 @@ Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
 - Test: `tests/test_m3_tdiff.py`; suite 19 passed.
 - Next: `T_SOLVER` (scan + Chorde iteration), and the source of `lsh%water`
   (`LATERHEAT`/`SOILFORLAKE`).
+
+## M3: T_SOLVER and the water heat balance
+
+- `tsolver.t_solver`: the scan + Chorde surface-temperature iteration,
+  including the `Tsurf_prev-10` warm start, `dt_scan=5`, `resid=1 W/m2`,
+  `maxiter=20` and the exact `Bal1 /= Bal3` comparisons.
+- `surface.WaterSurfaceContext` + `surface.heatbalance_water`: runs
+  `T_DIFF`, `HEATFLUXSURF`, `SENSLATMOM_FLUXES`, `RADBALANCE` and the
+  `HEATBALANCE` composition for a case-1 water surface.
+- Probe validation at step 1: all 49 `HEATBALANCE` calls match to 5.7e-14;
+  `t_solver` reproduces `Tsurf3=24.96465085113388`, `iter=1`,
+  `Bal3=-0.18064846780376964` exactly.  This is the first complete
+  surface-temperature solve of the rewritten model.
+- Tests: `tests/test_m3_tsolver.py` (synthetic scan/Chorde) and
+  `tests/test_m3_surface_solver.py` (Fortran probes); suite 23 passed.
+- Next: `lsh%water` source (`LATERHEAT`/`SOILFORLAKE`), then the soil,
+  momentum, turbulence and layer-thickness ports for the full case-1 step.
