@@ -9,4 +9,4 @@ The specification is `../LAKEMATRIX-PLAN.en.md` (authoritative) and
 acceptance tolerances are defined there. `NOTES.md` records deviations from the
 specification and the measured errors.
 
-Status: M1 skeleton complete (initial state, grid, forcing and batch stacking tests pass). M2 next. Case 3 is not covered by the natural reference set; see `docs/reference_cases.md`.
+Status: M2 in progress: tridiagonal, block-tridiagonal, density and radiation are ported and tested; bathymetry and surface fluxes are next. Case 3 is not covered by the natural reference set; see `docs/reference_cases.md`.

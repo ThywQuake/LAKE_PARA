@@ -122,3 +122,23 @@ reader).
 exact, `Tsoil1` 1e-6), grid (`ddz`/`dzeta` 1e-12, `zsoil` 1e-6, `zsoilcols`
 exact), forcing, and batch stacking.  The probe files live under
 `lakematrix/scratch/m0.4/` (git-ignored); the tests skip when they are absent.
+
+## M2: tridiagonal, block-tridiagonal, density and radiation
+
+- `physics/tridiag.py`: `PROGONKA` ported with the Fortran 1-based recurrence
+  (internal leading zero pad); NumPy and JAX (`lax.scan`) versions agree with a
+  dense solve to 5.6e-17, including an inner `K..N` window.
+- `physics/blocktridiag.py`: `MATRIXPROGONKA` ported; the Fortran recurrence
+  indexes `alpha(k)` from block `k-1`, with a separate final block `N`.  After
+  matching that indexing the result agrees with a dense block solve to
+  1.7e-16.
+- `physics/density.py`: `WATER_DENS_TS` (McCutcheon, `eos 5`, `lindens 0`);
+  `DENS_975` and `DENS_1192` probes at step 1 match **exactly** (byte-equal
+  values, max diff 0.0).
+- `physics/radiation.py`: `RAD_UPDATE` Beer-Lambert integration; tested against
+  a direct loop (1e-14).  A Fortran probe for radiation will be added with the
+  surface/M3 work.
+- Tests: `tests/test_m2_tridiag_density.py`,
+  `tests/test_m2_block_radiation.py`; the full suite is 10 passed.
+- The density probe was added to the probe build (`patch_density`); tags
+  `DENS_<line>_in/out` at every `call DENSITY_W` in `lake.f90`.

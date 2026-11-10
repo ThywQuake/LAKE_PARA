@@ -113,6 +113,26 @@ def patch_init_var(path):
                   "  deallocate(pressoil)", 1)
     path.write_text(s)
 
+
+
+def patch_density(path):
+    lines = path.read_text().splitlines()
+    out = []
+    i = 0
+    while i < len(lines):
+        if "call DENSITY_W" in lines[i]:
+            tag = f"DENS_{i + 1}"
+            out.append(f'  call LM_PROBE("{tag}_in", "Tw1", Tw1)')
+            out.append(f'  call LM_PROBE("{tag}_in", "Sal1", Sal1)')
+            out.append(f'  call LM_PROBE("{tag}_in", "preswat", preswat)')
+            out.append(lines[i])
+            out.append(f'  call LM_PROBE("{tag}_out", "row", row)')
+            i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    path.write_text("\n".join(out) + "\n")
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -147,6 +167,7 @@ def main():
 
     patch_lake(out / "source" / "model" / "lake.f90")
     patch_init_var(out / "source" / "model" / "init_var_mod.f90")
+    patch_density(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:
