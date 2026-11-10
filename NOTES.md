@@ -649,3 +649,16 @@ At step 14400 (3.33 days) the `summer60d` reference probe shows:
 The 1-day case is still 0.010 K; the divergence develops between day 1 and
 day 3.3.  Next: compare `K_EPSILON` at days 1/2/3 (probe `KE_in/out`) to find
 the first diverging field (likely `u1/u2`, `k2`, or `eps1` carry).
+
+## M4: ice/snow T_DIFF port (subagent)
+
+- `physics/ice.py` (2028 lines): `t_diff_ice` (all `T_DIFF` branches),
+  `diff_coef_ice/ice_sal/snow/deepice`, `snow_cond_heat_coef`, `sr_botsnow`,
+  `snow_calc`, `ice_increments`, `ice_properties`, `make_ice_state`
+  (`IceState`, 87 fields).  Import + synthetic drivers pass.
+- `snowsoil_mod.f90` **does not exist** in this checkout; the old SNOWSOIL
+  physics now lives in `snowcalc.f90` (`SNOW_CALC`/`addPrecipToSnow`) and
+  `snowtemp.f90` (`SNOW_COND_HEAT_COEF`), which is what the port covers.
+  `addPrecipToSnow` is **not ported** (needed if precipitation/snow
+  accumulation is modelled).
+- M4 wiring (case-2/case-3 step, layer transitions) is next.

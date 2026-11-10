@@ -16,7 +16,8 @@ Fortran          Python
                  ``T``, ``Tsn``, ``cs``, ``dens``, ``dz``, ``itop``, ``lams``,
                  ``wl``, ``z``)
 ``SNOW_COND_HEAT_COEF``  :func:`snow_cond_heat_coef` (``snowtemp.f90:100-179``)
-``SNOW_CALC``    :func:`snow_calc`          (``snowcalc.f90:5-497``)
+``SNOW_CALC``    :func:`snow_calc`          (``snowcalc.f90:5-497``; the
+                 FLake ``SNOWSOIL`` routine's densification/melt)
 ``SR_botsnow``   :func:`sr_botsnow`         (``lake.f90:1339-1344``,
                  ``1921-1926``)
 case 2 ice       :func:`ice_increments`     (``lake.f90:1334-1445``)
@@ -48,9 +49,10 @@ auditable (``Ti1[j]``, ``cs[j]``, ``lams[j]`` read like the source).
 
 Arrays whose Fortran lower bound is 0 keep it: ``ddzi05[0:Mice]``,
 ``ddz05[0:M]``, ``rad_integr_ice[0:Mice]``, ``rad_integr_water[0:M]``,
-``rad_integr_deepice[0:Mice]``.  ``dzeta_int``/``dzetai_int`` come from
-:mod:`lakematrix.grid` already padded with a leading zero, so there
-``dzeta_int[j]`` is Fortran ``dzeta_int(j)``.
+``rad_integr_deepice[0:Mice]``.  ``dzeta_int``/``dzetai_int`` are rebuilt
+from ``ddz``/``ddzi`` with the ``DZETA``/``DZETAI`` recurrence and padded, so
+``dzeta_int[j]`` is Fortran ``dzeta_int(j)`` (this is *not* the same offset as
+``lakematrix.grid.Grid.dzeta_int``, whose index ``j`` is Fortran ``j+1``).
 
 Floating point
 ==============
@@ -67,6 +69,23 @@ quotient of two default-real values evaluated in single precision.
 not algebraically rearranged (``0.5*Ti1*ci*ddzi*l1*dt_inv`` in one branch is
 ``Ti1*0.5*dt_inv*ci*ddzi*l1`` in another, and the two round differently), so
 the transcribed expression keeps the same operand order.  Do not "simplify".
+
+Typical call order (``lake.f90`` case 2.1)
+==========================================
+
+1. :func:`ice_properties` (``ci_m_roi_v``/``lami_v``) and
+   :func:`lakematrix.physics.soil.soil_cond_heat_coef` for the soil columns.
+2. :func:`sr_botsnow` and the ``RadIce``/``RadWater``/``RadDeepIce`` updates
+   (already in :mod:`lakematrix.physics.radiation`).
+3. :func:`snow_cond_heat_coef` (``cs``/``lams`` needed by ``T_DIFF`` and by
+   the snow-ice interface heat capacity ``y``).
+4. :func:`ice_increments` (or :func:`ice_increments_nosnow`) for
+   ``dhi``/``dhi0``/``dls``/``dls0``/``snmeltice``/``dhiimp``/``dhw``.
+5. :func:`lakematrix.physics.tsolver.t_solver` with
+   ``fn = lambda Ts: (heat_balance, t_diff_ice(1, Ts, ...))``; the final
+   ``t_diff_ice(0, Tsurf3, ...)`` of ``T_SOLVER`` updates ``Tw2``/``Tis2``.
+6. ``SOILFORLAKE``/``S_DIFF`` and then :func:`snow_calc` (``SNOWTEMP``
+   calls ``addPrecipToSnow`` first - see below).
 
 Not transcribed (TODO, deliberately left rather than invented)
 ==============================================================
@@ -87,14 +106,14 @@ Not transcribed (TODO, deliberately left rather than invented)
   :mod:`lakematrix.physics.soil`.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List
 
 import numpy as np
 
 from ..constants import C
-from .soil import Bathym, LatHeatSource, meltpnt
-from .tsolver import _progonka_1based, diff_coef_soil, diff_coef_water
+from .soil import Bathym, meltpnt
+from .tsolver import diff_coef_soil, diff_coef_water
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +285,8 @@ class IceState:
     lsh_water: np.ndarray
     # --- snow scalars (SNOWSOIL_MOD) --------------------------------------
     itop: int = 1
+    #: ``flag_snow``: 0 = no snow cover, 1 = snow cover present (``ARRAYS``).
+    flag_snow: int = 0
     hs1: float = 0.0
     snowmass: float = 0.0
     snowmass_init: float = 0.0
@@ -298,7 +319,17 @@ class IceState:
     dhihigh: float = 0.0
     dhwsnmelt: float = 0.0
     dhwls: float = 0.0
+    #: case-2.2 surface increments: ``dhis`` (heat-loss ice growth) and
+    #: ``dhip`` (precipitation ice).
+    dhis: float = 0.0
+    dhip: float = 0.0
     isoilcol: int = 1
+    #: ``saltice%par``: 0 = pure ice, 1 = ice with brine-filled pores.
+    saltice: int = 0
+    #: External water increments of the current step (``dhwfsoil`` soil heat
+    #: flux, ``dhwtrib`` tributaries), added in :func:`ice_increments`.
+    dhwfsoil: float = 0.0
+    dhwtrib: float = 0.0
     # --- switches ---------------------------------------------------------
     soilswitch: int = SOILSWITCH_ON
     nmeltpoint: int = 1
@@ -326,8 +357,8 @@ def make_ice_state(M, Mice, ns, ms, *, ml=131, nveclen=None,
     ddz05 = z(M + 1)
     ddzi = z(Mice + 1)
     ddzi05 = z(Mice + 1)
-    dzeta_int = z(M + 1)
-    dzetai_int = z(Mice + 1)
+    dzeta_int = z(M + 2)
+    dzetai_int = z(Mice + 2)
     bwater = [Bathym() for _ in range(M + 2)]
     bice = [Bathym() for _ in range(Mice + 2)]
     bdice = [Bathym() for _ in range(Mice + 2)]
@@ -339,6 +370,13 @@ def make_ice_state(M, Mice, ns, ms, *, ml=131, nveclen=None,
         bwater = list(geom.bathymwater)
         bice = list(geom.bathymice)
         bdice = list(geom.bathymdice)
+
+    # DZETA/DZETAI (dzeta_mod.f90): dzeta_int(1) = 0,
+    # dzeta_int(i) = dzeta_int(i-1) + ddz(i-1); 1-based with a pad at 0.
+    for i in range(2, M + 2):
+        dzeta_int[i] = dzeta_int[i - 1] + ddz[i - 1]
+    for i in range(2, Mice + 2):
+        dzetai_int[i] = dzetai_int[i - 1] + ddzi[i - 1]
 
     return IceState(
         M=M, Mice=Mice, ns=ns, ms=ms, ml=nn, nveclen=nveclen,
@@ -354,8 +392,8 @@ def make_ice_state(M, Mice, ns, ms, *, ml=131, nveclen=None,
         Tis1=z(Mice + 2), Tis2=z(Mice + 2),
         Tw1=z(M + 2), Tw2=z(M + 2), lamw=z(M + 1),
         PEMF=z(M + 2), pt_down_f=z(M + 2), Sal2=z(M + 2), preswat=z(M + 2),
-        Tsoil1=z((ns + 1) * (1 if isoilcol is None else isoilcol + 1)).reshape(
-            ns + 1, 1 if isoilcol is None else isoilcol + 1),
+        Tsoil1=z((ns + 1) * (2 if isoilcol is None else isoilcol + 1)).reshape(
+            ns + 1, 2 if isoilcol is None else isoilcol + 1),
         Tsoil2=z(ns + 1),
         lamsoil=z(ns + 1), csoil=z(ns + 1), rosoil=z(ns + 1), dzs=z(ns + 1),
         isoilcol=(1 if isoilcol is None else isoilcol),
@@ -529,6 +567,11 @@ def t_diff_ice(surf, Tsurf, dt, snow, ice, water, deepice, isoilcol, ifflux,
     ``T`` (the *old* snow temperature) is only read here; it is refreshed from
     ``Tsn`` by ``SNOWTEMP`` before ``SNOW_CALC`` runs.
 
+    ``cuette%par`` values other than ``0``/``1``/``11`` leave the water-only
+    system unsolved in the source (``Temp`` is never computed, so ``Tw2`` would
+    be undefined); a ``NotImplementedError`` is raised instead of returning
+    garbage.
+
     Deviations from a "clean" implementation are the source's own and are
     kept: ``d(Mice+1)`` in the "water + deep ice, no soil" branch does **not**
     scale ``RadDeepIce%integr(Mice)`` by ``xx`` (``t_solver_mod.f90:639-643``)
@@ -630,7 +673,7 @@ def t_diff_ice(surf, Tsurf, dt, snow, ice, water, deepice, isoilcol, ifflux,
                         Temp = _progonka(a, b, c, d, itop,
                                          ms + Mice + ns - 1)
                         st.Tsoil2[1:ns + 1] = Temp[ms + Mice:
-                                                    ms + Mice + ns + 1]
+                                                    ms + Mice + ns]
                     elif st.soilswitch == SOILSWITCH_OFF:
                         # Snow, ice, no water, no soil (323-336)
                         xx = (st.bathymice[Mice].area_half
@@ -689,7 +732,7 @@ def t_diff_ice(surf, Tsurf, dt, snow, ice, water, deepice, isoilcol, ifflux,
                     d[ms + ns - 1] = (-st.soilbotflx * st.dzs[ns - 1]
                                       / (st.lamsoil[ns - 1] + st.lamsoil[ns]))
                     Temp = _progonka(a, b, c, d, itop, ms + ns - 1)
-                    st.Tsoil2[1:ns + 1] = Temp[ms:ms + ns + 1]
+                    st.Tsoil2[1:ns + 1] = Temp[ms:ms + ns]
                 elif st.soilswitch == SOILSWITCH_OFF:
                     # Snow only, no soil (comment in the source says "Only
                     # ice exists", t_solver_mod.f90:364)
@@ -1105,4 +1148,881 @@ def t_diff_ice(surf, Tsurf, dt, snow, ice, water, deepice, isoilcol, ifflux,
     return st
 
 
-# @@APPEND@@
+# ---------------------------------------------------------------------------
+# SNOW_COND_HEAT_COEF
+# ---------------------------------------------------------------------------
+
+def snow_cond_heat_coef(st: IceState, tempair):
+    """``SNOW_COND_HEAT_COEF`` (``snowtemp.f90:100-179``), in place.
+
+    Two jobs: on the first call (``flag_snow_init == 1``) it builds the initial
+    snow pack (``itop = ms-2``, three 1 cm layers at ``tempair`` plus the
+    interface node ``ms``), and on every call it refreshes ``lams`` (snow heat
+    conductance) and ``cs`` (snow heat capacity) for layers ``itop..ms-1``.
+
+    ``dzsn`` (``snowtemp.f90:165-167``) is computed in the source but never
+    used; it is not reproduced here.  ``totalmelts``/``totalprecips``/
+    ``totalevaps`` are diagnostic counters of ``ARRAYS`` and are not part of
+    this state (TODO: track them in the integration layer if the output needs
+    them).
+    """
+    ms = st.ms
+    if st.flag_snow_init == 1:
+        st.itop = ms - 2
+        st.hs1 = _s(0.02)
+        rofresh = _s(67.9) + _s(51.3) * np.exp(tempair / _s(2.6))
+        for i in range(st.itop, ms):
+            st.wl[i] = 0.0
+            st.dens[i] = rofresh
+            st.dz[i] = _s(0.01)
+            st.T[i] = tempair
+        st.wl[ms] = 0.0
+        st.dens[ms] = rofresh
+        st.T[ms] = st.Ti1[1]
+        st.dz[ms] = 0.5 * st.dz[ms - 1]
+        for i in range(1, st.itop):
+            st.T[i] = 0.0
+            st.wl[i] = 0.0
+            st.dens[i] = 0.0
+            st.dz[i] = 0.0
+
+    row0, ci, cw = C.row0, C.ci, C.cw
+    for i in range(st.itop, ms):
+        # 0.419*(6.*(dens(i)/row0)**4 + 1.9*(dens(i)/row0) + 0.05)
+        # The literals are default real.  NOTE: gfortran may expand the integer
+        # power into a chain of multiplications, which can differ from this
+        # ``**4`` in the last bit; check against the reference build.
+        d = st.dens[i] / row0
+        st.lams[i] = _s(0.419) * (6.0 * d ** 4 + _s(1.9) * d + _s(0.05))
+        xx = st.wl[i] * row0 / (st.dens[i] * st.dz[i])
+        st.cs[i] = ci * (1.0 - xx) + cw * xx
+
+
+# ---------------------------------------------------------------------------
+# SR_botsnow
+# ---------------------------------------------------------------------------
+
+def sr_botsnow(st: IceState, shortwave):
+    """Shortwave radiation reaching the bottom of the snow pack.
+
+    ``lake.f90:1339-1344`` (case 2) and ``lake.f90:1921-1926`` (case 3):
+    ``SR_botsnow = shortwave*(1-albedoofsnow)``, attenuated by every snow layer
+    ``itop..ms-1`` as ``EXTINCT_SNOW(dens(i))**dz(i)``.  The loop is skipped
+    while ``flag_snow_init == 1``.  ``albedoofsnow`` is the float32 constant of
+    :mod:`lakematrix.constants`, so ``1-albedoofsnow`` is ``0.149999976...``.
+    """
+    SR = shortwave * (1.0 - C.albedoofsnow)
+    if st.flag_snow_init != 1:
+        for i in range(st.itop, st.ms):
+            SR = SR * extinct_snow(st.dens[i]) ** st.dz[i]
+    st.SR_botsnow = SR
+    return SR
+
+
+# ---------------------------------------------------------------------------
+# SNOW_CALC
+# ---------------------------------------------------------------------------
+
+def snow_calc(st: IceState, dt, *, ts, t2, snow_sc, eflux, Erad, Elatent,
+              precip, pheat):
+    """``SNOW_CALC`` (``snowcalc.f90:5-497``): snow melt, percolation,
+    densification and layer bookkeeping.
+
+    Parameters
+    ----------
+    ts : float
+        Snow surface temperature, C (``T(itop)`` at the previous step).
+    t2 : float
+        Air temperature at 2 m, C.
+    snow_sc : float
+        Water equivalent of the pack *before* the step, m
+        (``snow_sc``/``snowmass`` in ``SNOWTEMP``).
+    eflux, Erad : float
+        Surface heat flux and absorbed shortwave radiation reaching the snow
+        surface, W/m2 (``eflux`` and ``shortwave*(1-albedoofsnow)``).
+    Elatent : float
+        Latent heat flux, W/m2; used only to compute evaporation ``evap``.
+    precip : float
+        Precipitation rate, m/s.  The routine multiplies it by ``dt`` on entry
+        and divides it back on exit, exactly like the Fortran module variable;
+        the restored value is returned.
+    pheat : float
+        Heat content of the rain, W/m2 - ``addPrecipToSnow`` output (see the
+        module docstring; use 0 when precipitation is not modelled).
+
+    Returns ``dict(snow_sc, swe, hsnow, snmelt, phase, precip)``: the new
+    water equivalent (also stored in ``st.swe``), the snow depth, the melt
+    rate (m/s of water, stored in ``st.snmelt``), the (unused) ``Phase``
+    accumulator of the source and the restored precipitation rate.
+
+    ``pmelt``/``CCT`` of the Fortran signature are not read by ``SNOW_CALC``
+    and are omitted; ``addPrecipToSnow`` is not ported (see module docstring).
+
+    The ``GOTO``-driven layer compaction (labels 222/111/123/333) is
+    reproduced with restartable ``while`` loops: the label-222 sweep restarts
+    from ``ms-1`` after every relabelled layer, and the label-333 merge sweep
+    restarts after every merge, exactly like ``GOTO 222``/``GOTO 333``.
+    """
+    ms = st.ms
+    itop = st.itop
+    row0, roi = C.row0, C.roi
+    Lwi, Liv = C.Lwi, C.Liv
+    whc, hcond = C.whc, C.hcond
+    g, csnow = C.g, C.csnow
+    rosn_dry_ref = C.rosn_dry_ref
+    S1E4 = _s(1.0e-4)
+    S1E6 = _s(1.0e-6)
+
+    # t(i) before the update is needed by the Phase accumulator (line 366).
+    ti = np.zeros_like(st.T)
+    for i in range(itop, ms):
+        ti[i] = st.T[i]
+
+    st.snmelt = 0.0
+    swe = 0.0
+    phase = 0.0
+
+    densny = _s(67.9) + _s(51.3) * np.exp(t2 / _s(2.6))
+    Elatent1 = Elatent
+    if ts > _s(1.0e-5):
+        Elatent1 = 0.0
+    elif snow_sc < _s(1.0e-6) and Elatent > 0.0:
+        Elatent1 = 0.0
+
+    st.dz[ms - 1] = st.dz[ms - 1] + st.dz[ms]
+    evap = Elatent1 / Liv
+    hsnow = 0.0
+
+    for i in range(itop, ms):
+        st.extinct[i] = extinct_snow(st.dens[i])
+
+    precip = precip * dt
+    # Fortran leaves countrad undefined when extinct(itop) == 0; that needs
+    # exp(-(...)) == 0, i.e. an infinite density, so it is unreachable.  Start
+    # from 0 to keep the loop deterministic.
+    countrad = 0.0
+    Eout = 0.0
+
+    if itop != ms:
+        # ------------------- first (top) snow layer -----------------------
+        i = itop
+        dztop = st.dz[i]
+        Erain = pheat
+        Eflux1 = eflux
+        Erad1 = Erad
+        if st.extinct[itop] == 0.0:
+            Eflux1 = Eflux1 + Erad1 + Erain
+        else:
+            if itop == ms - 1:
+                Eflux1 = Eflux1 + Erain + Erad1
+            else:
+                Eflux1 = Eflux1 + Erain + Erad1 * (1 - st.extinct[i] ** st.dz[i])
+            countrad = Erad1 * (1 - st.extinct[i] ** st.dz[i])
+
+        if Eflux1 > 0.0:
+            if itop == ms - 1:
+                if ts >= _s(-1.0e-4):
+                    if Eflux1 / Lwi * dt <= st.dens[i] * st.dz[i] - st.wl[i] * row0:
+                        smelt = Eflux1 / Lwi / row0
+                        Eout = 0.0
+                    else:
+                        smelt = (st.dz[i] * st.dens[i] / row0 - st.wl[i]) / dt
+                        Eout = Eflux1 - smelt * row0 * Lwi
+                else:
+                    smelt = 0.0
+                    Eout = 0.0
+            else:
+                smelt = 0.0
+                Eout = Eflux1
+        else:
+            smelt = 0.0
+            Eout = 0.0
+
+        # percolation
+        smelt = smelt + st.wl[i] / dt
+        st.wl[i] = 0.0
+        qbase = smelt
+
+        # top layer thickness and density
+        dmass = st.dens[i] * dztop - (evap + smelt * row0) * dt
+        densev = st.dens[i] if evap > 0.0 else roi
+        dztop = dztop - (smelt * row0 / st.dens[i] + evap / densev) * dt
+        if dztop == 0.0:
+            dztop = S1E6
+        st.dens[i] = max(dmass / dztop, 0.0)
+        if st.dens[i] > roi:
+            dztop = dztop * st.dens[i] / roi
+            st.dens[i] = roi
+            dmass = st.dens[i] * dztop
+        st.dz[i] = dztop
+        if itop == ms - 1:
+            st.snmelt = qbase
+
+    counter = st.dz[itop]
+
+    if itop < ms - 1:
+        # ------------------------- internal layers ------------------------
+        for i in range(itop + 1, ms):
+            rf = 0.0
+            smelti = 0.0
+            Ein = Eout
+            st.T[i] = (st.T[i] * st.dz[i] * st.dens[i]
+                       / (qbase * row0 * dt + st.dz[i] * st.dens[i]))
+            dzi = st.dz[i]
+            st.wl[i] = st.wl[i] + qbase * dt
+            if st.wl[i] < 0.0:
+                st.wl[i] = 0.0
+            w0 = st.wl[i]
+            if st.extinct[i] == 0.0:
+                Ei = Ein
+            else:
+                if i == ms - 1:
+                    Ei = Ein + (Erad1 - countrad)
+                else:
+                    Ei = Ein + Erad1 * (st.extinct[i] ** counter
+                                        - st.extinct[i] ** (counter + st.dz[i]))
+                    # EInRad is assigned in the source but never used.
+                countrad = countrad + Erad1 * (
+                    st.extinct[i] ** counter
+                    - st.extinct[i] ** (counter + st.dz[i]))
+                counter = counter + st.dz[i]
+
+            st.dz[i] = st.dz[i] + qbase * dt
+            ziz = dzi / st.dz[i]
+            st.dens[i] = ziz * st.dens[i] + (1.0 - ziz) * row0
+
+            if Ei > 0.0:
+                if st.T[i] >= S1E4:
+                    Ei = Ei + csnow * st.dens[i] * st.T[i] * st.dz[i] / dt
+                    st.T[i] = 0.0
+                    if Ei / Lwi * dt <= (st.dz[i] * st.dens[i]
+                                         - st.wl[i] * row0):
+                        smelti = Ei / Lwi / row0
+                        Eout = 0.0
+                    else:
+                        smelti = (st.dz[i] * st.dens[i] / row0 - st.wl[i]) / dt
+                        Eout = Ei - smelti * row0 * Lwi
+                        dzi = 0.0
+                    st.wl[i] = st.wl[i] + smelti * dt
+                else:
+                    # T < 0
+                    st.T[i] = st.T[i] + Ei * dt / (csnow * st.dens[i] * st.dz[i])
+                    if st.T[i] < _s(-1.0e-4):
+                        if st.wl[i] > (-st.T[i] * csnow * st.dz[i]
+                                       * st.dens[i] / Lwi / row0):
+                            rf = (-st.T[i] * csnow * st.dz[i] * st.dens[i]
+                                  / Lwi / dt / row0)
+                            st.T[i] = 0.0
+                            st.wl[i] = st.wl[i] - rf * dt
+                        else:
+                            rf = st.wl[i] / dt
+                            st.T[i] = (st.T[i] + rf * row0 * dt * Lwi
+                                       / (csnow * st.dz[i] * st.dens[i]))
+                            st.wl[i] = 0.0
+                        Eout = 0.0
+                    if st.T[i] >= S1E4:
+                        if (csnow * st.dens[i] * st.T[i] * st.dz[i] / Lwi
+                                <= st.dz[i] * st.dens[i]):
+                            smelti = (csnow * st.dens[i] * st.T[i]
+                                      * st.dz[i] / dt / Lwi / row0)
+                            Eout = 0.0
+                        else:
+                            smelti = st.dz[i] * st.dens[i] / dt / row0
+                            Eout = (csnow * st.dens[i] * st.T[i] * st.dz[i] / dt
+                                    - smelti * Lwi * row0)
+                            dzi = 0.0
+                        st.T[i] = 0.0
+                        st.wl[i] = st.wl[i] + smelti * dt
+            else:
+                # E == 0 (E < 0 is an impossible case per the source)
+                if st.T[i] >= S1E4:
+                    if (csnow * st.dens[i] * st.T[i] * st.dz[i] / Lwi
+                            <= st.dz[i] * st.dens[i]):
+                        smelti = (csnow * st.dens[i] * st.T[i]
+                                  * st.dz[i] / dt / Lwi / row0)
+                        st.T[i] = 0.0
+                        Eout = 0.0
+                        st.wl[i] = st.wl[i] + smelti * dt
+                    else:
+                        smelti = st.dz[i] * st.dens[i] / dt / row0
+                        Eout = (csnow * st.dens[i] * st.T[i] * st.dz[i] / dt
+                                - smelti * Lwi * row0)
+                        st.T[i] = 0.0
+                        dzi = 0.0
+                        st.wl[i] = st.wl[i] + smelti * dt
+                else:
+                    # T < 0
+                    if st.wl[i] > (-csnow * st.dens[i] * st.T[i]
+                                   * st.dz[i] / Lwi / row0):
+                        rf = (-csnow * st.dens[i] * st.T[i] * st.dz[i]
+                              / dt / Lwi / row0)
+                        st.T[i] = 0.0
+                        st.wl[i] = st.wl[i] - rf * dt
+                    else:
+                        rf = st.wl[i] / dt
+                        st.wl[i] = 0.0
+                        st.T[i] = (st.T[i] + rf * row0 * dt * Lwi
+                                   / (csnow * st.dz[i] * st.dens[i]))
+                    Eout = 0.0
+                    if st.T[i] >= S1E4:
+                        if (csnow * st.dens[i] * st.T[i] * st.dz[i] / Lwi
+                                <= st.dz[i] * st.dens[i]):
+                            smelti = (csnow * st.dens[i] * st.T[i]
+                                      * st.dz[i] / dt / Lwi / row0)
+                            Eout = 0.0
+                        else:
+                            smelti = st.dz[i] * st.dens[i] / dt / row0
+                            Eout = (csnow * st.dens[i] * st.T[i]
+                                    * st.dz[i] / dt - smelti * Lwi * row0)
+                            dzi = 0.0
+                        st.T[i] = 0.0
+                        st.wl[i] = st.wl[i] + smelti * dt
+
+            # ------------------------ internal q --------------------------
+            rho_dry = ((st.dens[i] - w0 / st.dz[i] * row0)
+                       / (1 - w0 / st.dz[i]))
+            if rho_dry < 0.0:
+                # The source prints here; only the correction is reproduced.
+                # > @todo{add heat release}
+                if st.dens[i] - rosn_dry_ref > 0.0:
+                    st.wl[i] = (st.dz[i] * (st.dens[i] - rosn_dry_ref)
+                                / (row0 - rosn_dry_ref))
+                    rho_dry = rosn_dry_ref
+                else:
+                    st.wl[i] = 0.0
+                    rho_dry = st.dens[i]
+
+            porosity = 1 - rho_dry / roi - st.wl[i] / st.dz[i]
+            porosity = max(porosity, whc + 0.1)
+            p1 = porosity - whc
+            fukt = st.wl[i] / st.dz[i]
+            if fukt > whc:
+                fukt = (fukt - whc) / p1
+                q0 = hcond * fukt ** 3.0
+                qbase = min(q0, st.wl[i] / dt)
+                st.wl[i] = st.wl[i] - qbase * dt
+            else:
+                qbase = 0.0
+                q0 = 0.0
+            if dzi <= S1E6:
+                qbase = qbase + st.wl[i] / dt
+                st.dz[i] = dzi
+            else:
+                dzmasi = st.dz[i] * st.dens[i] - qbase * dt * row0
+                dzi = st.dz[i] + row0 * (
+                    -qbase / row0 - rf / row0 + rf / roi
+                    - smelti / rho_dry + smelti / row0) * dt
+                st.dens[i] = max(dzmasi / dzi, 0.0)
+                st.dz[i] = dzi
+                if st.dens[i] > roi:
+                    st.dz[i] = st.dz[i] * st.dens[i] / roi
+                    st.dens[i] = roi
+            phase = phase + (st.T[i] - ti[i]) * st.dens[i] * st.dz[i] / snow_sc / dt
+
+            if i == ms - 1:
+                st.snmelt = qbase
+
+    # --------------------- layer removal / relabelling --------------------
+    goto123 = False
+    if itop == ms - 1 and st.dz[itop] < S1E6:
+        st.dz[itop] = 0.0
+        st.dens[itop] = 0.0
+        goto123 = True
+    if not goto123:
+        if itop < ms and st.dz[itop] <= S1E6:
+            st.dz[itop] = 0.0
+            st.dens[itop] = 0.0
+            itop = itop + 1
+
+        # label 222: drop empty layers and shift the ones above down
+        while True:
+            restart = False
+            for i in range(ms - 1, itop - 1, -1):
+                if st.dz[i] <= S1E6:
+                    k = itop - 1  # value of k after a completed DO loop
+                    for kk in range(i - 1, itop - 1, -1):
+                        if st.dz[kk] > S1E6:
+                            k = kk
+                            break
+                    for j in range(i, itop - 1, -1):
+                        st.dz[j] = st.dz[k + j - i]
+                        st.dens[j] = st.dens[k + j - i]
+                        st.T[j] = st.T[k + j - i]
+                        st.wl[j] = st.wl[k + j - i]
+                    itop = itop - k + i
+                    restart = True
+                    break
+            if not restart:
+                break
+
+        # label 333: merge layers thinner than dzmin into the one below
+        while True:
+            merged = False
+            for i in range(itop, ms):
+                if st.dz[i] < C.dzmin and itop < ms - 1:
+                    if i < ms - 1:
+                        st.dens[i + 1] = (st.dens[i + 1] * st.dz[i + 1]
+                                          / (st.dz[i] + st.dz[i + 1])
+                                          + st.dens[i] * st.dz[i]
+                                          / (st.dz[i] + st.dz[i + 1]))
+                        st.T[i + 1] = (st.T[i + 1] * st.dz[i + 1]
+                                       / (st.dz[i] + st.dz[i + 1])
+                                       + st.T[i] * st.dz[i]
+                                       / (st.dz[i] + st.dz[i + 1]))
+                        st.wl[i + 1] = st.wl[i + 1] + st.wl[i]
+                        st.dz[i + 1] = st.dz[i + 1] + st.dz[i]
+                        for j in range(i, itop, -1):
+                            st.dens[j] = st.dens[j - 1]
+                            st.T[j] = st.T[j - 1]
+                            st.wl[j] = st.wl[j - 1]
+                            st.dz[j] = st.dz[j - 1]
+                        itop = itop + 1
+                        merged = True
+                        break
+            if not merged:
+                break
+
+    st.itop = itop
+
+    # ------------------------- swe / snow depth ---------------------------
+    swe = 0.0
+    hsnow = 0.0
+    for j in range(ms - 1, itop - 1, -1):
+        swe = swe + st.dz[j] * st.dens[j]
+        hsnow = hsnow + st.dz[j]
+
+    # ------------- densification due to gravity and metamorphism ----------
+    a2 = _s(0.00000066)
+    sigma = 75.0
+    for j in range(itop + 1, ms):
+        if st.dens[j] < 3 * densny:
+            dens_old = st.dens[j]
+            eta = (a2 * np.exp(_s(19.3) * st.dens[j] / roi)
+                   * np.exp(_sdiv(67300.0, 8.314) / (st.T[j] + _s(273.15))))
+            P = 0.0
+            for i in range(j, itop - 1, -1):
+                P = P + st.dens[i] * g * st.dz[i]
+            st.dens[j] = st.dens[j] + _s(0.001) * (
+                dt * st.dens[j] * 1000.0 * (sigma + P) / eta)
+            st.dens[j] = min(st.dens[j], roi)
+            st.dz[j] = st.dz[j] * dens_old / st.dens[j]
+
+    swe = 0.0
+    hsnow = 0.0
+    for j in range(ms - 1, itop - 1, -1):
+        swe = swe + st.dz[j] * st.dens[j]
+        hsnow = hsnow + st.dz[j]
+
+    snow_sc_out = swe
+
+    # --------------------- dz(ms) / z bookkeeping -------------------------
+    if itop != ms - 1:
+        st.dz[ms] = st.dz[ms - 1] / 3.0
+        st.dz[ms - 1] = st.dz[ms - 1] - st.dz[ms]
+    else:
+        st.dz[ms] = st.dz[ms - 1] / 2.0
+        st.dz[ms - 1] = st.dz[ms - 1] - st.dz[ms]
+    if itop == ms - 1:
+        st.z[ms - 1] = st.z[ms] - st.dz[ms - 1] - st.dz[ms]
+    else:
+        st.z[ms - 1] = st.z[ms] - st.dz[ms - 1] / 2.0 - st.dz[ms]
+    for j in range(ms - 2, itop, -1):
+        st.z[j] = st.z[j + 1] - st.dz[j] / 2.0 - st.dz[j + 1] / 2.0
+    if itop < ms - 1:
+        st.z[itop] = st.z[itop + 1] - st.dz[itop + 1] / 2.0 - st.dz[itop]
+
+    for i in range(1, itop):
+        st.dz[i] = 0.0
+
+    st.swe = snow_sc_out
+    st.hs1 = hsnow
+    precip = precip / dt
+
+    return dict(snow_sc=snow_sc_out, swe=snow_sc_out, hsnow=hsnow,
+                snmelt=st.snmelt, phase=phase, precip=precip)
+
+
+# ---------------------------------------------------------------------------
+# Ice properties (ci_m_roi_v / lami_v)
+# ---------------------------------------------------------------------------
+
+def ice_properties(st: IceState, saltice=None):
+    """Volumetric heat capacity and conductivity of the surface ice.
+
+    ``lake.f90:1315-1329`` (case 2) and ``lake.f90:1903-1915`` (case 3).
+    ``saltice == 0``: pure ice, ``ci_m_roi_v = ci_m_roi`` and
+    ``lami_v = lami``.  ``saltice == 1``: pores filled with water,
+    ``ci_m_roi_v(i) = ci*roi*(1-porice(i)) + cw*row0*porice(i)`` for
+    ``i = 1..Mice+1`` and
+    ``lami_v(i) = lami*(1-x) + lamw0*x`` with ``x = 0.5*(porice(i)+porice(i+1))``
+    for ``i = 1..Mice``.
+
+    ``lami_v(Mice+1)`` is **not** written by the source; the existing value
+    persists (it is never read either - the ice-soil interface uses
+    ``lami_v(Mice)``).
+    """
+    if saltice is None:
+        saltice = st.saltice
+    Mice = st.Mice
+    if saltice == 0:
+        for i in range(1, Mice + 2):
+            st.ci_m_roi_v[i] = C.ci_m_roi
+        for i in range(1, Mice + 1):
+            st.lami_v[i] = C.lami
+    elif saltice == 1:
+        for i in range(1, Mice + 2):
+            st.ci_m_roi_v[i] = (C.ci * C.roi * (1.0 - st.porice[i])
+                                + C.cw * C.row0 * st.porice[i])
+        for i in range(1, Mice + 1):
+            x = 0.5 * (st.porice[i] + st.porice[i + 1])
+            st.lami_v[i] = C.lami * (1.0 - x) + C.lamw0 * x
+    else:
+        raise NotImplementedError("saltice%%par = %r" % (saltice,))
+
+
+# ---------------------------------------------------------------------------
+# Case 2 ice thickness increments (water + ice + snow)
+# ---------------------------------------------------------------------------
+
+def ice_increments(st: IceState, dt):
+    """``lake.f90:1367-1445``: case 2.1 (water + ice + snow) increments.
+
+    Computes the ice growth/melt increments of one step:
+
+    ``dhwlow``/``dhilow``
+        freezing/melting at the ice bottom, limited by the water and ice
+        thicknesses (``lake.f90:1374-1375``);
+    ``dhwhigh``/``dhihigh``
+        melting at the ice top (fresh-water melting point) plus the snowmelt
+        frozen onto the ice top (``snmeltice``) and the ice impounded from
+        above (``dhiimp``);
+    ``dhwsnmelt``
+        snowmelt water reaching the water column;
+    ``dhwls``/``dls``
+        growth/melt of the deep (bottom) ice layer;
+    ``dhi``/``dhi0``
+        total and "top" ice increments (``dhi0`` is the part that also enters
+        the moving-grid terms of ``DIFF_COEF``).
+
+    ``T_DIFF``'s snow-ice interface reads ``snmeltice`` and ``dhiimp`` from the
+    state, so call this **before** ``T_SOLVER``, and call
+    :func:`snow_cond_heat_coef` before it (the source calls
+    ``SNOW_COND_HEAT_COEF`` at ``lake.f90:1399`` "needed for cs update").
+
+    ``Ti1[1]`` is clipped to ``x + T_phase_threshold`` (``x`` = meltpnt(0)) when
+    the ice top is above the melting point.  ``dhwfsoil``/``dhwtrib`` are
+    external increments produced by the soil/tributary modules and are added
+    from the state unchanged.
+
+    Returns the dict of increments (also written into ``st``).
+    """
+    Mice, M, ms = st.Mice, st.M, st.ms
+    Ti1, Tw1 = st.Ti1, st.Tw1
+    l1, h1 = st.l1, st.h1
+    row0_m_Lwi = C.row0_m_Lwi
+    roi_d_row0 = C.roi_d_row0
+    cw = C.cw_m_row0
+    x = meltpnt(0.0, 0.0, st.nmeltpoint)
+
+    # --- ice bottom / water top fluxes -----------------------------------
+    flux1 = (-st.lami_v[Mice] * (Ti1[Mice + 1] - Ti1[Mice])
+             / (st.ddzi[Mice] * l1)
+             + st.rad_integr_ice[Mice]
+             + st.ci_m_roi_v[Mice + 1] * (st.dhi - st.dhi0)
+             * (Ti1[Mice + 1] - Ti1[Mice]) / (2.0 * dt))
+    flux2 = (-st.lamw[1] * (Tw1[2] - Tw1[1]) / (st.ddz[1] * h1)
+             + st.rad_integr_water[1]
+             + cw * st.dhw0 * (Tw1[2] - Tw1[1]) / (2.0 * dt)
+             + cw * st.PEMF[1] * (st.pt_down_f[1] - 0.5 * (Tw1[2] + Tw1[1])))
+    # Limiting the freezing/melting rate by the thicknesses of water and ice
+    dhwlow = min(max(dt * (flux1 - flux2) / (row0_m_Lwi),
+                     -st.ddz[1] * h1),
+                 st.ddzi[Mice] * l1 * C.roi_d_row0)
+    dhilow = -dhwlow * C.roi_d_row0
+    if st.saltice == 1:
+        dhwlow = dhwlow * (1.0 + st.porice[Mice + 1] * roi_d_row0
+                           / (1.0 - st.porice[Mice + 1]))
+        dhilow = dhilow * (1.0 / (1.0 - st.porice[Mice + 1]))
+
+    # --- melting at the ice top (fresh-water melting point) --------------
+    if Ti1[1] > x + C.T_phase_threshold:
+        dhwhigh = ((Ti1[1] - x - C.T_phase_threshold)
+                   * st.ci_m_roi_v[1] * l1 * st.ddzi[1] * 0.5 / row0_m_Lwi)
+        dhihigh = -dhwhigh * C.roi_d_row0
+        Ti1[1] = x + C.T_phase_threshold
+        if st.saltice == 1:
+            dhwhigh = dhwhigh * (1.0 + st.porice[1] * roi_d_row0
+                                 / (1.0 - st.porice[1]))
+            dhihigh = dhihigh * (1.0 / (1.0 - st.porice[1]))
+    else:
+        dhwhigh = 0.0
+        dhihigh = 0.0
+
+    # --- freezing of snowmelt at the snow-ice interface -------------------
+    # y: heat capacity of the snow-ice interface.  NOTE: SNOW_COND_HEAT_COEF
+    # refreshes cs only for itop..ms-1, so cs(ms) is whatever the last
+    # initialisation left there - a quirk of the source, kept as is.
+    y = 0.5 * (st.cs[ms] * st.dens[ms] * st.dz[ms]
+               + st.ci_m_roi_v[1] * st.ddzi[1] * l1)
+    dTmax = max((1.0 - C.snmeltwat) * st.snmelt * dt * C.row0 * C.Lwi / y, 0.0)
+    dTisnmelt = min(dTmax, x + C.T_phase_threshold - Ti1[1])
+    dTisnmelt = max(dTisnmelt, 0.0)
+    fracsn = dTisnmelt / (dTmax + C.small_value)
+    snmeltice = dTmax * y / (C.row0 * C.Lwi) * fracsn
+    dhihigh = dhihigh + snmeltice * C.roi_d_row0
+
+    # --- impoundment of ice from above by water through cracks ------------
+    dTmax = max((st.snowmass + l1 * (C.roi - C.row0)) * C.Lwi / y, 0.0)
+    dTiimp = min(dTmax, x + C.T_phase_threshold - Ti1[1] - dTisnmelt)
+    dTiimp = max(dTiimp, 0.0)
+    fracimp = dTiimp / (dTmax + C.small_value)
+    dhiimp = C.icetopfr * dTmax * y / (C.Lwi * C.row0) * fracimp
+    dhihigh = dhihigh + dhiimp * C.roi_d_row0
+    dhwhigh = dhwhigh - dhiimp
+
+    # --- snowmelt water reaching the water column -------------------------
+    dhwsnmelt = (C.snmeltwat * st.snmelt * dt
+                 + (1.0 - C.snmeltwat) * st.snmelt * dt * (1.0 - fracsn))
+
+    if st.ls1 != 0.0:
+        flux1 = (-st.lamw[M] * (Tw1[M + 1] - Tw1[M]) / (st.ddz[M] * h1)
+                 + st.rad_integr_water[M]
+                 + cw * (st.dhw - st.dhw0) * (Tw1[M + 1] - Tw1[M])
+                 / (2.0 * dt)
+                 + cw * st.PEMF[M] * (st.pt_down_f[M]
+                                      - 0.5 * (Tw1[M + 1] + Tw1[M])))
+        flux2 = (-C.lami * (st.Tis1[2] - st.Tis1[1]) / (st.ddzi[1] * st.ls1)
+                 + st.rad_integr_deepice[1]
+                 + C.ci_m_roi * st.dls0 * (st.Tis1[2] - st.Tis1[1])
+                 / (2.0 * dt))
+        dhwls = dt * (flux1 - flux2) / (row0_m_Lwi)
+        dls = -dhwls * C.roi_d_row0
+        dhw = (dhwhigh + dhwlow + st.dhwfsoil + dhwls + st.dhwtrib
+               + dhwsnmelt)
+        dhw0 = dhwlow + dhwhigh + dhwsnmelt
+        dls0 = dls
+    else:
+        dls = 0.0
+        dhwls = 0.0
+        dhw = dhwhigh + dhwlow + st.dhwfsoil + st.dhwtrib + dhwsnmelt
+        dhw0 = dhwlow + dhwhigh + dhwsnmelt
+        dls0 = st.dls0
+
+    dhi = dhilow + dhihigh
+    dhi0 = dhihigh
+
+    st.dhwlow, st.dhilow = dhwlow, dhilow
+    st.dhwhigh, st.dhihigh = dhwhigh, dhihigh
+    st.dhwsnmelt, st.dhwls = dhwsnmelt, dhwls
+    st.dhi, st.dhi0 = dhi, dhi0
+    st.dls, st.dls0 = dls, dls0
+    st.snmeltice, st.dhiimp = snmeltice, dhiimp
+    st.dhw, st.dhw0 = dhw, dhw0
+
+    return dict(dhwlow=dhwlow, dhilow=dhilow, dhwhigh=dhwhigh,
+                dhihigh=dhihigh, dhwsnmelt=dhwsnmelt, dhwls=dhwls,
+                dhi=dhi, dhi0=dhi0, dls=dls, dls0=dls0,
+                snmeltice=snmeltice, dhiimp=dhiimp, fracsn=fracsn,
+                fracimp=fracimp, dhw=dhw, dhw0=dhw0)
+
+
+def ice_increments_nosnow(st: IceState, dt, *, precip, tempair, Elatent):
+    """``lake.f90:1657-1717``: case 2.2 (water + ice, no snow) increments.
+
+    Same quantities as :func:`ice_increments` plus ``dhis`` (ice growth from
+    the surface heat loss ``-Elatent/(roi*Liv)*dt``) and ``dhip`` (precipitation
+    turned into ice / snow-to-ice).  ``dhw``/``dhw0`` do not contain a snowmelt
+    term here.
+
+    The flag bookkeeping of the source is reproduced: precipitation below
+    freezing temperature is stored in ``snowmass`` and, once it exceeds
+    ``3*dzmin`` of fresh snow, switches the model to case 2.1
+    (``flag_snow = 1``, ``itop = ms-2``).  The caller must then run the
+    ``SNOWTEMP``/``SNOW_COND_HEAT_COEF`` sequence instead.
+
+    ``dhwhigh``/``dhihigh`` are *not* reset when the ice top is not melting and
+    the ``dhis`` branch does not fire (``Ti1(1) == x + T_phase_threshold``
+    exactly); the stale values are kept, as in the source.
+    """
+    Mice, M, ms = st.Mice, st.M, st.ms
+    Ti1, Tw1 = st.Ti1, st.Tw1
+    l1, h1 = st.l1, st.h1
+    cw = C.cw_m_row0
+    x = meltpnt(0.0, 0.0, st.nmeltpoint)
+
+    if Ti1[1] > x + C.T_phase_threshold:
+        dhwhigh = ((Ti1[1] - x - C.T_phase_threshold)
+                   * st.ci_m_roi_v[1] * st.ddzi[1] * l1 * 0.5 / C.row0_m_Lwi)
+        dhis = 0.0
+        dhihigh = -dhwhigh * C.roi_d_row0
+        if st.saltice == 1:
+            dhwhigh = dhwhigh * (1.0 + st.porice[1] * C.roi_d_row0
+                                 / (1.0 - st.porice[1]))
+            dhihigh = dhihigh * (1.0 / (1.0 - st.porice[1]))
+        Ti1[1] = x + C.T_phase_threshold
+    else:
+        dhwhigh = st.dhwhigh
+        dhihigh = st.dhihigh
+        dhis = st.dhis
+
+    # --- initial thin snow layer, to be used at the next timestep ---------
+    if precip > 0.0 and tempair < 0.0 and l1 > 0.05:
+        st.snowmass = st.snowmass + precip * dt * C.row0
+        if st.snowmass / C.rofrsn >= 3.0 * C.dzmin:
+            st.flag_snow = 1
+            st.hs1 = st.snowmass / C.rofrsn + C.small_value
+            st.itop = ms - 2
+        dhip = 0.0
+    else:
+        dhip = precip * C.row0_d_roi * dt
+    if tempair > 0.0 and st.snowmass > 0.0:
+        dhip = dhip + st.snowmass / C.row0
+        st.snowmass = 0.0
+
+    flux1 = (-st.lami_v[Mice] * (Ti1[Mice + 1] - Ti1[Mice])
+             / (st.ddzi[Mice] * l1)
+             + st.rad_integr_ice[Mice]
+             + st.ci_m_roi_v[Mice + 1] * (st.dhi - st.dhi0)
+             * (Ti1[Mice + 1] - Ti1[Mice]) / (2.0 * dt))
+    flux2 = (-st.lamw[1] * (Tw1[2] - Tw1[1]) / (st.ddz[1] * h1)
+             + st.rad_integr_water[1]
+             + cw * st.dhw0 * (Tw1[2] - Tw1[1]) / (2.0 * dt)
+             + cw * st.PEMF[1] * (st.pt_down_f[1] - 0.5 * (Tw1[2] + Tw1[1])))
+    dhwlow = min(max(dt * (flux1 - flux2) / C.row0_m_Lwi,
+                     -st.ddz[1] * h1),
+                 st.ddzi[Mice] * l1 * C.roi_d_row0)
+    dhilow = -dhwlow * C.roi_d_row0
+    if st.saltice == 1:
+        dhwlow = dhwlow * (1.0 + st.porice[Mice + 1] * C.roi_d_row0
+                           / (1.0 - st.porice[Mice + 1]))
+        dhilow = dhilow * (1.0 / (1.0 - st.porice[Mice + 1]))
+
+    if Ti1[1] < meltpnt(0.0, 0.0, st.nmeltpoint) + C.T_phase_threshold:
+        dhis = -Elatent / (C.roi * C.Liv) * dt
+        dhwhigh = 0.0
+        dhihigh = 0.0
+
+    dhi = dhihigh + dhilow + dhis + dhip
+    dhi0 = dhis + dhihigh + dhip
+
+    if st.ls1 != 0.0:
+        flux1 = (-st.lamw[M] * (Tw1[M + 1] - Tw1[M]) / (st.ddz[M] * h1)
+                 + st.rad_integr_water[M]
+                 + cw * (st.dhw - st.dhw0) * (Tw1[M + 1] - Tw1[M])
+                 / (2.0 * dt)
+                 + cw * st.PEMF[M] * (st.pt_down_f[M]
+                                      - 0.5 * (Tw1[M + 1] + Tw1[M])))
+        flux2 = (-C.lami * (st.Tis1[2] - st.Tis1[1]) / (st.ddzi[1] * st.ls1)
+                 + st.rad_integr_deepice[1]
+                 + C.ci_m_roi * st.dls0 * (st.Tis1[2] - st.Tis1[1])
+                 / (2.0 * dt))
+        dhwls = dt * (flux1 - flux2) / C.row0_m_Lwi
+        dls = -dhwls * C.roi_d_row0
+        dls0 = dls
+        dhw = dhwhigh + st.dhwfsoil + dhwls + dhwlow + st.dhwtrib
+        dhw0 = dhwhigh + dhwlow
+    else:
+        dhw = dhwhigh + st.dhwfsoil + dhwlow + st.dhwtrib
+        dhw0 = dhwhigh + dhwlow
+        dls = 0.0
+        dls0 = st.dls0
+        dhwls = st.dhwls  # the source leaves dhwls untouched here
+
+    st.dhwlow, st.dhilow = dhwlow, dhilow
+    st.dhwhigh, st.dhihigh = dhwhigh, dhihigh
+    st.dhwls = dhwls
+    st.dhi, st.dhi0 = dhi, dhi0
+    st.dls, st.dls0 = dls, dls0
+    st.dhw, st.dhw0 = dhw, dhw0
+    st.dhwsnmelt = 0.0
+    st.dhis = dhis
+    st.dhip = dhip
+
+    return dict(dhwlow=dhwlow, dhilow=dhilow, dhwhigh=dhwhigh,
+                dhihigh=dhihigh, dhis=dhis, dhip=dhip, dhwls=dhwls,
+                dhi=dhi, dhi0=dhi0, dls=dls, dls0=dls0, dhw=dhw, dhw0=dhw0)
+
+
+# ---------------------------------------------------------------------------
+# UPDATE_ICE_SALINITY
+# ---------------------------------------------------------------------------
+
+def salicebot(dhbdt, salwat, por):
+    """``SALICEBOT`` (``phys_func.f90:1569-1587``): ice bottom bulk salinity.
+
+    ``w`` is the freezing rate in mm/h (``max(dhbdt,0)*3.6E+6``), then
+    ``(row0*por + (1-por)*roi) * salwat*alpha*sqrt(w)/(beta*sqrt(w)+gamma_)``
+    with ``alpha = beta = 7.`` and ``gamma_ = 10.3`` (default real).
+    """
+    w = max(dhbdt, 0.0) * _s(3.6e6)
+    return ((C.row0 * por + (1.0 - por) * C.roi) * salwat
+            * _s(7.0) * np.sqrt(w)
+            / (_s(7.0) * np.sqrt(w) + _s(10.3)))
+
+
+def update_ice_salinity(st: IceState, dt, Sal1, isoilcol=None):
+    """``UPDATE_ICE_SALINITY`` (``salinity_mod.f90:306-395``), in place.
+
+    Solves the bulk ice salinity with :func:`diff_coef_ice_sal`, then
+
+    * top b.c. (``salinity_mod.f90:361-366``): a flux condition driven by the
+      water-layer thickness change ``dhw0``;
+    * bottom b.c.: at the water-ice interface the pore salinity follows
+      ``max(SALICEBOT((dhw-dhw0)/dt, Sal1(1), porice(Mice+1)),
+      Sal1(1)*row0*poricebot)``; with no water it is a zero-gradient condition;
+    * ``salice(i) = max(salice(i), sal_min)`` for ``i = 1..Mice`` with
+      ``sal_min = 1.e-2`` (default real);
+    * ``porice(Mice+1) = salice(Mice+1)/(Sal1(1)*row0 + small_value)`` and the
+      porosity rescaling ``porice(i) *= salice(i)/salprev(i)``.
+
+    Only the ``h1 > 0`` branch is reachable with water present; both are
+    transcribed.  ``isoilcol`` is accepted for signature symmetry and unused.
+    """
+    Mice = st.Mice
+    nn = st.nveclen
+    a = np.zeros(nn + 1)
+    b = np.zeros(nn + 1)
+    c = np.zeros(nn + 1)
+    d = np.zeros(nn + 1)
+    _S001 = _s(1.0e-2)  # sal_min
+
+    salprev = st.salice.copy()
+
+    diff_coef_ice_sal(a, b, c, d, 2, Mice, 2, Mice, dt, st)
+
+    # 2. Salinity equation discretized at the top boundary
+    b[1] = -0.5 * st.dhw0 / (st.h1 * dt * st.ddzi[1])
+    c[1] = 1.0 / dt + b[1]
+    d[1] = (st.salice[1] * (1.0 / dt - C.asalice)
+            - 0.5 * st.dhw0 / (st.h1 * dt * st.ddzi[1])
+            * (st.salice[2] - st.salice[1]))
+
+    if st.h1 > 0.0:
+        # Water-ice interface
+        a[Mice + 1] = 0.0
+        c[Mice + 1] = 1.0
+        d[Mice + 1] = max(
+            salicebot((st.dhw - st.dhw0) / dt, Sal1[1], st.porice[Mice + 1]),
+            Sal1[1] * C.row0 * C.poricebot)
+    else:
+        # Ice-soil interface: zero salinity gradient
+        a[Mice + 1] = 1.0
+        c[Mice + 1] = 1.0
+        d[Mice + 1] = 0.0
+
+    y = _progonka(a, b, c, d, 1, Mice + 1)
+    st.salice[1:Mice + 2] = y[1:Mice + 2]
+
+    for i in range(1, Mice + 1):
+        st.salice[i] = max(st.salice[i], _S001)
+
+    # Brine salt concentration at the ice bottom equals the water salinity
+    st.porice[Mice + 1] = (st.salice[Mice + 1]
+                           / (Sal1[1] * C.row0 + C.small_value))
+
+    # Rescaling of the water-filled porosity after the bulk salinity update
+    for i in range(1, Mice + 1):
+        st.porice[i] = st.porice[i] * st.salice[i] / salprev[i]
+
+    return st
+
