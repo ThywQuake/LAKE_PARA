@@ -431,6 +431,28 @@ def patch_kepsilon_lake(path):
         path.write_text("".join(lines))
         return
 
+
+
+def patch_kepsilon_internal(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE K_EPSILON")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    anchor = s.index("lam_E  (i) = CE(i)/sigmaE", start)
+    enddo = s.index("enddo", anchor)
+    ins = ('  call LM_PROBE("KE3", "rhotemp", rhotemp(1:M))\n'
+           '  call LM_PROBE("KE3", "rhosal", rhosal(1:M))\n'
+           '  call LM_PROBE("KE3", "work", work(1:M,1:2))\n'
+           '  call LM_PROBE("KE3", "E12", E12(1:M))\n'
+           '  call LM_PROBE("KE3", "eps12", eps12(1:M))\n')
+    s = s[:enddo + len("enddo")] + "\n" + ins + s[enddo + len("enddo"):]
+    end = s.index("END SUBROUTINE K_EPSILON")
+    outs = "".join(f'  call LM_PROBE("KE2_out", "{n}", {n})\n' for n in
+                   ("CE", "CEt", "s", "gen", "f", "c_eps1", "c_eps2",
+                    "c_eps3", "gamt", "gamu", "gamv"))
+    s = s[:end] + outs + s[end:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -479,6 +501,7 @@ def main():
     patch_momentum_lake(out / "source" / "model" / "lake.f90")
     patch_bathym2(out / "source" / "model" / "lake.f90")
     patch_kepsilon_lake(out / "source" / "model" / "lake.f90")
+    patch_kepsilon_internal(out / "source" / "model" / "turb_mod.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

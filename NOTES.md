@@ -390,3 +390,13 @@ are not in `lake.f90` scope (`c_eps3`/`cet` have no IMPLICIT type there).  The
 next debugging step is a probe **inside** `K_EPSILON` (`turb_mod.f90`) for
 `CE/CEt/s/gen/f/c_eps*` and a comparison of the stability functions; the
 v25 `KE_in/KE_out` probes remain the entry-level reference.
+
+## M3: density derivative bug and K_EPSILON divergence
+
+- **Fixed `ddens_dsal`**: the Fortran multiplies the Canuto salinity
+  derivative by `1.d+3` (`DDENS_DSAL = DDENS_DSAL*1.d+3`); the Python port was
+  missing it.  `rhotemp` matched the probe exactly; `rhosal` now does too.
+- K_EPSILON first-iteration `work1/work2` reproduce the probe to 4e-12 /
+  3e-20, and `E12/eps12` match.  The remaining `e2/eps2` divergence must be in
+  the E/eps tridiagonal update; the next probe is after the two `PROGONKA`
+  calls inside `iterat_keps` (`E_it2`/`eps_it2`).

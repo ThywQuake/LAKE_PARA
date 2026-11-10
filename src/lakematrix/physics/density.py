@@ -74,7 +74,7 @@ def ddens_dsal(temp, sal):
     a = alpha1 - alpha2 * temp + alpha3 * temp ** 2 - alpha4 * temp ** 3 + alpha5 * temp ** 4
     b = -beta1 + beta2 * temp - beta3 * temp ** 2
     c = gamma1
-    return a + 1.5 * b * sg ** 0.5 + 2.0 * c * sg
+    return (a + 1.5 * b * sg ** 0.5 + 2.0 * c * sg) * 1.0e3
 
 
 def set_dens_consts():
