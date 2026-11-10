@@ -88,6 +88,17 @@ expects ``Tsoil2`` to hold the *diffused* temperature of the same column
 shapes are ``(ns, nsoilcols)`` and ``(M+1)`` without a leading lake axis.  A
 batch wrapper loops over lakes.
 
+**Validation** (M3 probe, step 1 of the reference case, ``dt = 20 s``): starting
+from ``INITVAR`` and the probe bathymetry, :func:`soilcolstemp` reproduces the
+Fortran ``LAKE_exit`` side-column temperatures **bit for bit** (max abs diff
+0.0 over all 4 columns x 10 layers), and :func:`soil_cond_heat_coef` matches the
+``T_DIFF`` probe ``csoil``/``rosoil``/``lamsoil`` exactly; ``zsoil``/``dzs``
+match ``INITVAR``/``TD_in`` exactly.  The moisture/phase-change branches
+(``wl3``/``wl4``/``wi2``/``dhwfsoil``) have **no probe output yet** — they are
+transcribed but only checked for conservation, ``PROGONKA`` residual (1e-16) and
+long-run stability (400 steps of freeze/melt without NaN, ``wl1`` inside
+``[0, WL_MAX]``, ``wl4`` inside the pore capacity).
+
 **Not ported / TODO.**  The methane part of ``SOILCOLSTEMP`` (``METHANE``
 call), ``FP_THETA`` and the ``bcswitch == 2`` surface-flux boundary condition.
 ``SOILFORLAKE``'s diagnostic ``print`` block for ``Tsoil3 < -10`` is reproduced
@@ -120,6 +131,7 @@ __all__ = [
     "meltpnt",
     "meltingpoint",
     "overlay",
+    "pad1",
     "soil_cond_heat_coef",
     "soil_cond_johansen",
     "soil_type_parameters",
@@ -154,6 +166,19 @@ def _fdiv(x, y):
         return np.float64(x) / np.float64(y)
 
 
+def pad1(x):
+    """Return ``x`` with a leading zero, for 0-based -> 1-based conversion.
+
+    ``grid.py``/``bathym.py`` return 0-based arrays; this module indexes arrays
+    the Fortran way, so pad them once (``Tw1 = pad1(probe_Tw1)``).  For
+    ``ddz05``/``ddzi05`` (Fortran lower bound 0) do **not** pad.
+    """
+    x = np.asarray(x, dtype=float)
+    out = np.zeros(x.shape[:-1] + (x.shape[-1] + 1,))
+    out[..., 1:] = x
+    return out
+
+
 # ``0.01`` is a default-real literal everywhere it appears in the source.
 _S001 = _s(0.01)
 # ``1.d-2`` (double) used by ``ARG = max(ARG,1.d-2)``.
@@ -175,10 +200,11 @@ _MOLMASS_METHHYDR = ((_MOLMASS_H2O + _MOLMASS_CH4 * _NCH4_D_NH2O)
                      / (1.0 + _NCH4_D_NH2O))
 _METHHYDRDISS = 5.53e4 * 1.0e3 / _MOLMASS_METHHYDR   # J/kg
 
-# MELTPNT constants (phys_func.f90:778-798)
+# MELTPNT constants (phys_func.f90:778-798).  dtdc is used by npar = 1; pnorm
+# and Pa2dbar belong to the npar = 2 (Jackett) branch, which is not ported.
 _MELTPNT_DTDC = _s(66.7)     # real(4) parameter dtdc = 66.7
-_MELTPNT_PNORM = 101325.0    # parameter pnorm = 101325
-_PA2DBAR = 1.0e-4            # parameter Pa2dbar = 1.d-4
+_MELTPNT_PNORM = 101325.0    # parameter pnorm = 101325   (npar = 2)
+_PA2DBAR = 1.0e-4            # parameter Pa2dbar = 1.d-4   (npar = 2)
 
 # TEMPMHYDRDISS constants (phys_func.f90:1528-1545)
 _TEMPMH_C1 = _s(3.79e-3)     # parameter c1 = 3.79E-3
@@ -1098,15 +1124,16 @@ def soilforlake(state: SoilState, params: SoilParams, dt, is_=None,
 
     # Diagnostic print of the original model (kept behind a flag).
     if debug and np.any(Tsoil3[1:ns + 1, is_] < -10.0):
-        print('SOILFORLAKE: Tsoil11 = ', Tsoil1[1:ns + 1, is_])
-        print('SOILFORLAKE: Tsoil12 = ', Tsoil2[1:ns + 1])
-        print('SOILFORLAKE: Tsoil13 = ', Tsoil3[1:ns + 1, is_])
-        print('SOILFORLAKE: wl1 = ', wl1[1:ns + 1, is_])
-        print('SOILFORLAKE: wl2 = ', wl2[1:ns + 1])
-        print('SOILFORLAKE: wl3 = ', wl3[1:ns + 1])
-        print('SOILFORLAKE: wl4 = ', wl4[1:ns + 1, is_])
-        print('SOILFORLAKE: wi1 = ', wi1[1:ns + 1, is_])
-        print('SOILFORLAKE: wi2 = ', wi2[1:ns + 1, is_])
+        tag = f'(column {is_})'
+        print('SOILFORLAKE: Tsoil11', tag, '=', Tsoil1[1:ns + 1, is_])
+        print('SOILFORLAKE: Tsoil12', tag, '=', Tsoil2[1:ns + 1])
+        print('SOILFORLAKE: Tsoil13', tag, '=', Tsoil3[1:ns + 1, is_])
+        print('SOILFORLAKE: wl1', tag, '=', wl1[1:ns + 1, is_])
+        print('SOILFORLAKE: wl2', tag, '=', wl2[1:ns + 1])
+        print('SOILFORLAKE: wl3', tag, '=', wl3[1:ns + 1])
+        print('SOILFORLAKE: wl4', tag, '=', wl4[1:ns + 1, is_])
+        print('SOILFORLAKE: wi1', tag, '=', wi1[1:ns + 1, is_])
+        print('SOILFORLAKE: wi2', tag, '=', wi2[1:ns + 1, is_])
 
     # Split the phase-change output back into the prognostic arrays.
     Tsoil1[1:ns + 1, is_] = Tsoil3[1:ns + 1, is_]
@@ -1420,6 +1447,8 @@ def laterheat(state: SoilState, params: SoilParams, soilflux, *,
         lsh = LatHeatSource(water=np.zeros(M + 2), ice=np.zeros(Mice + 2),
                             dice=np.zeros(Mice + 2))
 
+    # Fortran: maxval(gsp%zsoilcols) over the whole (nsoilcols+1, nx, ny) array.
+    # Per lake this is the deepest point of its own zsoilcols profile.
     zmax = float(np.max(zsc[1:ncols + 2]))
 
     # --- Water layer exists -------------------------------------------------

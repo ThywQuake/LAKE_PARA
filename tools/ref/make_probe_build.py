@@ -348,6 +348,34 @@ def patch_turb_scales(path):
     s = s[:end] + outs + s[end:]
     path.write_text(s)
 
+
+
+def patch_momentum_lake(path):
+    lines = path.read_text().splitlines(keepends=True)
+    inserts = []
+    for i, line in enumerate(lines):
+        if 'call MOMENTUM_SOLVER' not in line:
+            continue
+        end = i
+        for j in range(i, min(i + 25, len(lines))):
+            if lines[j].rstrip().endswith(')'):
+                end = j
+                break
+        tag = f"MOM_{i + 1}"
+        pre = "".join(f'  call LM_PROBE("{tag}_in", "{n}", {n})\n' for n in
+                      ("u1", "v1", "E1", "eps1", "k2", "row", "Tw1", "Sal1",
+                       "Ri", "uv", "knum", "veg_sw", "u_star", "h1", "l1",
+                       "ls1", "dhw", "dhw0", "alphax", "alphay",
+                       "velfrict_bot", "velfrict_ice"))
+        post = "".join(f'  call LM_PROBE("{tag}_out", "{n}", {n})\n' for n in
+                       ("u2", "v2", "k2", "Ri",
+                        "velfrict_bot", "velfrict_ice"))
+        inserts.append((i, pre))
+        inserts.append((end + 1, post))
+    for pos, text in sorted(inserts, reverse=True):
+        lines.insert(pos, text)
+    path.write_text("".join(lines))
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -393,6 +421,7 @@ def main():
     patch_tdiff(out / "source" / "model" / "t_solver_mod.f90")
     patch_t_solver(out / "source" / "model" / "t_solver_mod.f90")
     patch_turb_scales(out / "source" / "model" / "phys_func.f90")
+    patch_momentum_lake(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

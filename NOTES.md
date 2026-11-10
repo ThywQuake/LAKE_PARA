@@ -325,3 +325,12 @@ smoke tests and branch scans are recorded in their reports, not in this repo.
   `csoil` 2e-10 relative, `rosoil` 1e-10, `lamsoil` exact.
 - `SOILFORLAKE`/`LATERHEAT`/`SOILCOLSTEMP` (the subagent port) still need
   probe validation; `soil_cond_heat_coef` is validated.
+
+## M3: soil port probe-validated (bit-exact heat path)
+
+The soil subagent's `physics/soil.py` was validated against the M0.4 probes at
+step 1: `zsoil/dzs`, `csoil/rosoil/lamsoil` and the side-column `Tsoil1`
+after `SOILCOLSTEMP` are all **bit-exact (0.0)**.  The last 2e-10 residual was
+`state.py`'s `- 0.01`, which INIT_VAR treats as a default-real literal; fixed
+to `- float(np.float32(0.01))`.  Moisture/phase-change (`wl3/wl4/wi2/
+dhwfsoil`) is transcribed but not yet probe-validated.

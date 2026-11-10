@@ -108,6 +108,7 @@ def init_state(params, grid: Grid):
     tricemethhydr = float(np.atleast_1d(params.tricemethhydr)[0])
     nmeltpoint = int(np.atleast_1d(params.nmeltpoint)[0])
     soilbotflx = float(np.atleast_1d(params.soilbotflx)[0])
+    _S001 = float(np.float32(0.01))  # INIT_VAR 0.01 is default-real
     sp = comsoilforlake(soiltype=soiltype, ns=params.ns,
                         nsoilcols=params.nsoilcols,
                         soil_depth=params.soil_depth,
@@ -126,11 +127,11 @@ def init_state(params, grid: Grid):
                 if s["Tsoil1"][l, i, j] > Tf:
                     s["wi1"][l, i, j] = 0.0
                     s["wl1"][l, i, j] = wl_max(sp.POR[i + 1], sp.rosdry[i + 1],
-                                               0.0, 0.0) - 0.01
+                                               0.0, 0.0) - _S001
                 else:
                     s["wl1"][l, i, j] = unfrwat(s["Tsoil1"][l, i, j], i + 1, sp)
                     s["wi1"][l, i, j] = (wi_max(sp.POR[i + 1], sp.rosdry[i + 1], 0.0)
-                                         - s["wl1"][l, i, j] - 0.01)
+                                         - s["wl1"][l, i, j] - _S001)
 
     # TKE/dissipation and background diffusivity (INIT_VAR 169-176, 475-480).
     s["E"][:, :params.M] = 10.0 ** (-5.5)
