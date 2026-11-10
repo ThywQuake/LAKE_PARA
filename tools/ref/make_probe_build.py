@@ -133,6 +133,28 @@ def patch_density(path):
         i += 1
     path.write_text("\n".join(out) + "\n")
 
+
+
+def patch_bathym(path):
+    lines = path.read_text().splitlines()
+    out = []
+    i = 0
+    while i < len(lines):
+        if "call BATHYMETRY" in lines[i]:
+            tag = f"BATHY_{i + 1}"
+            end = call_end(lines, i)
+            out.extend(lines[i:end + 1])
+            for name in ("z_full", "preswat", "area_int", "area_half", "vol", "botar"):
+                out.append(f'  call LM_PROBE("{tag}_out", "{name}", {name})')
+            out.append(f'  call LM_PROBE("{tag}_out", "Lx", bathymwater(1:M+1)%Lx)')
+            out.append(f'  call LM_PROBE("{tag}_out", "Ly", bathymwater(1:M+1)%Ly)')
+            out.append(f'  call LM_PROBE("{tag}_out", "rad_int", bathymwater(1:M+1)%rad_int)')
+            i = end + 1
+            continue
+        out.append(lines[i])
+        i += 1
+    path.write_text("\n".join(out) + "\n")
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -168,6 +190,7 @@ def main():
     patch_lake(out / "source" / "model" / "lake.f90")
     patch_init_var(out / "source" / "model" / "init_var_mod.f90")
     patch_density(out / "source" / "model" / "lake.f90")
+    patch_bathym(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

@@ -142,3 +142,24 @@ exact), forcing, and batch stacking.  The probe files live under
   `tests/test_m2_block_radiation.py`; the full suite is 10 passed.
 - The density probe was added to the probe build (`patch_density`); tags
   `DENS_<line>_in/out` at every `call DENSITY_W` in `lake.f90`.
+
+## M2: bathymetry
+
+- `physics/bathym.py`: water part of `BATHYMETRY` for the testlake
+  configuration (`soilcolconjtype=2`, linear depth-area interpolation;
+  `lakeform=2`, rectangle).  The water surface is placed relative to the
+  deepest table point: `work1 = depth - max(depth) + h1 + ls1`; the area at
+  model depth `z` is the table area at `z + max(depth) - h1 - ls1`.
+- Probe `BATHY_902_out` at step 1: `z_full` 3.6e-15, `area_int` 3.7e-9 m2,
+  `vol` 3.0e-8 m3, `botar` exact, `Lx/Ly/rad` 1e-12, `preswat` 2.9e-3 Pa
+  (tolerance 1e-2).  The residual is the table interpolation / pressure
+  rounding, not a formula error.
+- The soil-column geometry (`bathymsoil`, `itop`/`ibot`/`icent`, `ksoilcol`,
+  `isoilcolc`) is not ported yet; it is needed by `SOILCOLSTEMP`/`LATERHEAT`
+  in M3.
+- Test: `tests/test_m2_bathym.py`; suite 11 passed.
+
+## M2: what remains
+
+- `surface.py`: `SfcFlx_*`, `SENSLATMOM_FLUXES`, `RADBALANCE`, `HEATBALANCE`,
+  `HEATFLUXSURF`.  This is the last M2 module and the entry point to M3.
