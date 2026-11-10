@@ -54,7 +54,7 @@ def replay(probe_dir, dt=20.0):
         roughness=float(i["roughness"]))
     s.init_arrays(M)
     s.ddz = np.r_[0, grid.ddz]
-    s.ddz05 = np.r_[0, grid.ddz05]
+    s.ddz05 = np.array(grid.ddz05, copy=True)  # Fortran bound 0:M
     s.dzeta_int = np.r_[0, grid.dzeta_int]
     s.dzeta_05int = np.r_[0, grid.dzeta_05int]
     s.ddz2 = np.zeros(M + 2)

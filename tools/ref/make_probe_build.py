@@ -446,6 +446,10 @@ def patch_kepsilon_internal(path):
                        '  call LM_PROBE("KE6", "k21", k2(1))\n'
                        '  call LM_PROBE("KE6", "tau_air", tau_air)\n') + s[anchor2:]
     # after the two PROGONKA solves
+    key_e = "call PROGONKA (nveclen,a,b,c,d,E_it2,1,M)"
+    pos_e = s.index(key_e, start)
+    coef = "".join(f'  call LM_PROBE("KE7", "{n}", {n}(1:M))\n' for n in ("a", "b", "c", "d"))
+    s = s[:pos_e] + coef + s[pos_e:]
     for call in ("E_it2", "eps_it2"):
         key = f"call PROGONKA (nveclen,a,b,c,d,{call},1,M)"
         pos = s.index(key, start) + len(key)

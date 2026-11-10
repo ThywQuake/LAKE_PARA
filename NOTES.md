@@ -420,3 +420,17 @@ divergence.  Next probes: `FTKES/FTKEB/FS/FB` and the two `PROGONKA` results.
 - `FS` differs because it inherits the mode-1/mode-2 `E_it1`; fixing mode 1
   is expected to fix `FS`/`eps_it2`/`E2`.
 - Test suite still 30 passed.
+
+## M3: K_EPSILON validated (root cause was a probe-harness bug)
+
+The replay harness padded **`ddz05`** with a leading zero, but `ddz05` is a
+Fortran **0-based** array (`0:M`); the padding shifted every `ddz05(i)` by one
+and doubled the top-boundary coefficient `xx(1)`.  The K_EPSILON port itself
+was correct.  Keeping `ddz05` 0-based (`s.ddz05 = grid.ddz05`):
+
+- `e2` 4.9e-19, `eps2` 1.8e-18, `k2` 3.5e-18, `kt` 9e-12;
+- `H_entrainment`/`Buoyancy0` exact.
+- Test: `tests/test_m3_kepsilon.py`; suite **31 passed**.
+
+This is the last major physics module of case 1.  Next: the full `step.py`
+(`VERTADV`, radiation, soil, T_SOLVER, K_EPSILON, layers).

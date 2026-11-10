@@ -1045,6 +1045,7 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
 
     next_tstep_keps = False
     trace = []
+    trace_coef = []
 
     # Scratch arrays of the Fortran routine (allocated once per call):
     #   work(1:M+1,1:2)             - buoyancy/shear production, then interpolants
@@ -1140,7 +1141,7 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
                     st.lam_e[i] = st.ce[i] / sigmaE
 
             # -------- eddy diffusivities between the half levels ----------
-            for i in range(2, M):
+            for i in range(2, M + 1):
                 work[i, 1] = interpolate_to_integer_point(
                     st.e12[i - 1], st.e12[i], st.ddz[i - 1], st.ddz[i])
                 work[i, 2] = interpolate_to_integer_point(
@@ -1370,6 +1371,8 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
                     a[i] = -st.k3_mid[i] * dt_keps / (st.h1 ** 2 * st.ddz[i] * st.ddz2[i - 1])
                     b[i] = -st.k3_mid[i + 1] * dt_keps / (st.h1 ** 2 * st.ddz[i] * st.ddz2[i])
 
+            trace_coef.append((np.array(a, copy=True), np.array(b, copy=True),
+                               np.array(c, copy=True), np.array(d, copy=True)))
             y = progonka(a[1:M + 1], b[1:M + 1], c[1:M + 1], d[1:M + 1],
                          k=0, n=M - 1)
             st.e_it2[1:M + 1] = y
@@ -1812,6 +1815,7 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
         st.k2[i] = st.k2[i] * st.ce[i]
 
     st.trace = trace
+    st.trace_coef = trace_coef
     st.firstcall = False            # turb_mod.f90:1156
 
     return st
