@@ -296,3 +296,21 @@ Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
   fresh-water testlake yields zero, but the full branch is transcribed).
 - `physics/layers.py`: `advance_case1` (`h2=h1+dhw`, `ls2=ls1+dls`, `l2=0`).
 - Tests: `tests/test_m3_salinity_layers.py`; suite 28 passed.
+
+## M3: first-pass ports of K_EPSILON / momentum / soil
+
+Three large modules were transcribed by parallel subagents and import cleanly:
+
+- `physics/kepsilon.py` (1814 lines): `k_epsilon(state, dt, dt_keps=None,
+  nstep_keps=None, params=None)` with `KEpsilonState` (126 fields) and
+  `KEpsilonParams`; `Turbpar 2`/`kepsbc 1`/`stabfunc 2` path; helpers
+  `CE_CANUTO`, `VSMOP_LAKE`, `TKE_FLUX_*`, `H13`, `SEICHE_ENERGY`.
+- `physics/momentum.py` (~62 KB): `momentum_solver(state, params, dt)` with
+  `MomentumState`/`MomentumParams`/`MomentumResult`; uses the ported
+  `blocktridiag.matrixprogonka`.
+- `physics/soil.py` (~68 KB): `comsoilforlake`, `soil_cond_heat_coef`,
+  `soilforlake`, `soilcolstemp`, `laterheat`, with `SoilState`/`SoilParams`.
+
+These are **not yet validated against the Fortran probes** and not yet wired
+into `step.py`; the next step is the integration test.  The subagents' own
+smoke tests and branch scans are recorded in their reports, not in this repo.
