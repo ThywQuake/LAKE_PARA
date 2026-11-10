@@ -32,6 +32,7 @@ ENTRY_VARS = [
     "ddz", "ddz05", "dzeta_int", "z_full", "zsoil", "zsoilcols(1:nsoilcols+1,ix,iy)",
     "tempair", "humair", "pressure", "uwind", "vwind", "precip",
     "longwave", "shortwave", "cloud", "netrad", "time", "nstep",
+    "lamw", "E1", "eps1", "k2", "kt",
 ]
 
 
@@ -520,15 +521,16 @@ def patch_soilcolstemp(path):
     start = s.index("SUBROUTINE SOILCOLSTEMP")
     imp = s.index("implicit none", start)
     s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
-    end = s.index("END SUBROUTINE SOILCOLSTEMP")
-    s = s[:end] + ('  call LM_PROBE("SCOL", "Tsoil1", Tsoil1)\n'
-                   '  call LM_PROBE("SCOL", "soilflux", soilflux(1:nsoilcols))\n') + s[end:]
-    start2 = s.index("SUBROUTINE TSURFSOILCOL")
-    imp2 = s.index("implicit none", start2)
-    s = s[:imp2] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp2:]
-    end2 = s.index("END SUBROUTINE TSURFSOILCOL")
-    s = s[:end2] + '  call LM_PROBE("SCOL", "Tsoilsurf", Tsoilsurf(1:nsoilcols))\n' + s[end2:]
+    key = "call TSURFSOILCOL("
+    pos = s.index(key, start)
+    # find the end of this call
+    end = s.index("\n", s.index("Tsoilsurf)", pos)) + 1
+    s = s[:end] + '  call LM_PROBE("SCOL", "Tsoilsurf", Tsoilsurf(1:gs%nsoilcols))\n' + s[end:]
+    end2 = s.index("END SUBROUTINE SOILCOLSTEMP")
+    s = s[:end2] + ('  call LM_PROBE("SCOL", "Tsoil1", Tsoil1)\n'
+                    '  call LM_PROBE("SCOL", "soilflux", soilflux(1:gs%nsoilcols))\n') + s[end2:]
     path.write_text(s)
+
 
 def patch_cmake(path):
     text = path.read_text()
@@ -581,8 +583,7 @@ def main():
     patch_kepsilon_internal(out / "source" / "model" / "turb_mod.f90")
     patch_soilforlake_lake(out / "source" / "model" / "lake.f90")
     patch_initvars(out / "source" / "model" / "lake.f90")
-    # patch_soilcolstemp: insertion point conflicts with the nested CONTAINS;
-    # disabled until the probe is reworked.
+    patch_soilcolstemp(out / "source" / "model" / "soil_mod.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

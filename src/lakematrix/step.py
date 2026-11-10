@@ -47,6 +47,7 @@ class StepState:
     bathym: object = None
     Tsurf_prev: float = -999.0
     surftyp_prev: int = 0
+    cdmw: float = 1.0e-15
 
 
 def _zsoil_geom(params, grid, l, st, bathym):
@@ -216,7 +217,7 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     # momentum
     ss.mom_params.uwind = float(uwind)
     ss.mom_params.vwind = float(vwind)
-    ss.mom_params.cdmw = 1.0e-3
+    ss.mom_params.cdmw = ss.cdmw
     ss.mom_params.fetch = fetch
     if getattr(ss.mom, "u2", None) is not None:
         ss.mom.u1 = np.array(ss.mom.u2)
@@ -257,6 +258,7 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     r = t_solver(fn, nstep, 4, ss.surftyp_prev, ss.Tsurf_prev)
     ss.Tsurf_prev = r["Tsurf3"]
     ss.surftyp_prev = 4
+    ss.cdmw = float(r["state"].get("cdmw", ss.cdmw))
     return dict(Tsurf3=r["Tsurf3"], state=r["state"], iter=r["iter"],
                 Bal3=r["Bal3"], dhw=dhw, dhw0=dhw0, integr=integr, lsh=lsh,
                 sc=sc, f=f, ctx=ctx, mom=mom_res, precip=precip,
@@ -352,10 +354,13 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
         SimpleNamespace(h1=np.array([st.h1[l]]), ls1=np.array([0.0])),
         np.array([r["dhw"]]))
     return dict(
-        Tw1=Tw2[1:], Sal1=Sal2[1:], Tsoil1=ss.soil.Tsoil1[1:, 1:],
+        Tw1=np.array(Tw2[1:], copy=True), Sal1=np.array(Sal2[1:], copy=True),
+        Tsoil1=np.array(ss.soil.Tsoil1[1:, 1:], copy=True),
         h1=float(lay["h1"][0]), Elatent=float(r["state"]["Elatent"]),
-        eflux0_kinem=eflux0_kinem, E1=ke.e1[1:], eps1=ke.eps1[1:],
-        lamw=lamw_new, kt=ke.kt[1:], row2=row2[1:], lsh=r["lsh"],
+        eflux0_kinem=eflux0_kinem, E1=np.array(ke.e1[1:], copy=True),
+        eps1=np.array(ke.eps1[1:], copy=True),
+        lamw=np.array(lamw_new, copy=True), kt=np.array(ke.kt[1:], copy=True),
+        row2=np.array(row2[1:], copy=True), lsh=r["lsh"],
         Tsurf3=r["Tsurf3"], dhw=r["dhw"], dhw0=r["dhw0"],
         turb=ts, Tsoil3=ss.soil.Tsoil3[1:, 1:], dhwfsoil=ss.soil.dhwfsoil)
 

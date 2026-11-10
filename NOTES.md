@@ -525,3 +525,19 @@ water depth already includes a small evaporative loss.  Test
 - A `SOILCOLSTEMP`/`TSURFSOILCOL` probe attempt hit the nested `CONTAINS`
   insertion point and was disabled in `make_probe_build.py`; the next attempt
   should probe `Tsoilsurf` inside `TSURFSOILCOL` at its actual end.
+
+## M3: two critical step-loop fixes
+
+1. `step_case1` returned **views** into the live `ss.soil` / `ke` arrays, so
+   `run_case1`'s earlier `out[k]` changed when later steps mutated the state.
+   All returned arrays are now copied.
+2. The initial `cdmw` is `1e-15` (`INIT_VAR`), not `1e-3`; it is carried from
+   `SENSLATMOM_FLUXES` (`heatbalance_water` state) into the next step's
+   momentum solve.  This fixes the step-1 `u2`/`lamw` mismatch (kt differed
+   by 1614 before).
+
+After both fixes, with the model initialization step (nstep 0):
+
+- step 1: `Tw1` 2.2e-7 K, `Tsoil1` 1e-7 K;
+- step 2: `Tw1` 2.1e-4 K, `Tsoil1` 3.5e-7 K;
+- step 3: `Tw1` 0.012 K (a new jump to investigate).

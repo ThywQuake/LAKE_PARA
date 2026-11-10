@@ -281,4 +281,4 @@ def heatbalance_water(Tsurf, ctx: WaterSurfaceContext):
                     botflux=float(bot[0]), hflux=slm["hflux"],
                     Elatent=slm["Elatent"], Radbal=float(rb),
                     Radbal_surf=float(rbs), eflux0=eflux0,
-                    eflux0_kinem=eflux0_kinem)
+                    eflux0_kinem=eflux0_kinem, cdmw=slm["cdmw"])
