@@ -1,0 +1,16 @@
+# Python
+.venv/
+.venv-linux/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Generated reference data and probes (reproducible from tools/ref)
+ref/
+probe/
+probe-build-local/
+
+# macOS
+.DS_Store
+.uvcache/

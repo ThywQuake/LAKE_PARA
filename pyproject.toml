@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lakematrix"
+version = "0.1.0"
+description = "LAKE thermodynamic core rewritten in JAX, with the lake as an array dimension"
+requires-python = ">=3.10"
+dependencies = [
+    "jax[cpu]>=0.4.30",
+    "numpy",
+    "netCDF4",
+    "xarray",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+lakematrix = "lakematrix.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: long runs (60 and 425 days); run with -m slow",
+]
+addopts = "-m 'not slow'"
