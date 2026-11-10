@@ -541,3 +541,15 @@ After both fixes, with the model initialization step (nstep 0):
 - step 1: `Tw1` 2.2e-7 K, `Tsoil1` 1e-7 K;
 - step 2: `Tw1` 2.1e-4 K, `Tsoil1` 3.5e-7 K;
 - step 3: `Tw1` 0.012 K (a new jump to investigate).
+
+## M3: u1 profile fixed; UPDATE_NEXT_TIMESTEP is the remaining handoff
+
+- `build_step_state` now reproduces `INIT_VAR`'s velocity profile
+  (`u1=us0` in the mixed layer, linear to zero at the bottom).  With that,
+  the first momentum solve matches `MOM_1105_out.u2` exactly.
+- The step-1 `E1`/`eps1` in the *next* `LAKE_entry` are **not** the `E2`/`eps2`
+  written at the end of `K_EPSILON` (e.g. `E1(1)=4.85e-6` at step 2 vs
+  `E2(1)=2.64e-4` at step 1).  So `UPDATE_NEXT_TIMESTEP` (called outside
+  `LAKE`) modifies `E1/eps1` (and likely `lamw`/`Tw1`) between steps.
+  This is the next routine to port; it explains the step-2/3 `lamw` and
+  interior-temperature drift.

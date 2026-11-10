@@ -109,8 +109,17 @@ def build_step_state(params, grid, l=0):
         fetch=float(np.atleast_1d(params.fetch)[l]))
     u1 = np.zeros(params.M + 1)
     v1 = np.zeros(params.M + 1)
-    u1[:] = float(np.atleast_1d(params.us0)[l])
-    v1[:] = float(np.atleast_1d(params.vs0)[l])
+    us0 = float(np.atleast_1d(params.us0)[l])
+    vs0 = float(np.atleast_1d(params.vs0)[l])
+    h_ml0 = float(np.atleast_1d(params.h_ML0)[l])
+    i_ml = int((params.M + 1) * h_ml0 / h1)
+    for ii in range(1, params.M + 2):
+        if ii <= max(i_ml, 1):
+            u1[ii - 1], v1[ii - 1] = us0, vs0
+        else:
+            frac = (ii - i_ml) / (params.M + 1 - i_ml)
+            u1[ii - 1] = us0 * (1.0 - frac)
+            v1[ii - 1] = vs0 * (1.0 - frac)
     mom = MomentumState(
         u1=u1, v1=v1, E1=st.E[l], eps1=st.eps[l],
         k2=np.zeros(params.M + 1), k2_old=np.zeros(params.M),
@@ -371,8 +380,8 @@ def run_case1(params, grid, rows, nsteps=180, l=0, callback=None):
     st = ss.state
     dt = params.dt
     out = []
-    for n in range(0, nsteps):
-        r = step_case1(ss, params, grid, rows, n, l, init_step=(n == 0))
+    for n in range(1, nsteps + 1):
+        r = step_case1(ss, params, grid, rows, n, l, init_step=(n == 1))
         st.Tw1[l] = r["Tw1"]
         st.Sal1[l] = r["Sal1"]
         st.Tsoil1[l] = r["Tsoil1"]
