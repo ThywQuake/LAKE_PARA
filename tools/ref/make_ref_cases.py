@@ -80,6 +80,12 @@ def build_case(name, dst):
     elif name == "shallow425d":
         make_case(dst, [full], 425)
         _set_h10_and_scale_table(dst / "setup/testlake_driver.dat", 5.0, 22.66)
+    elif name == "shallow05m425d":
+        make_case(dst, [full], 425)
+        _set_h10_and_scale_table(dst / "setup/testlake_driver.dat", 0.5, 22.66)
+    elif name == "shallow1m425d":
+        make_case(dst, [full], 425)
+        _set_h10_and_scale_table(dst / "setup/testlake_driver.dat", 1.0, 22.66)
     elif name == "warm425d":
         make_case(dst, [_shift(full, 3.0)], 425)
         _set_key(dst / "setup/testlake_driver.dat", "phi", 40.0)
@@ -88,7 +94,8 @@ def build_case(name, dst):
     _set_key(dst / "setup/testlake_setup.dat", "tribheat", 0)
 
 
-CASES = ["summer1d", "summer60d", "full425d", "cold425d", "shallow425d", "warm425d"]
+CASES = ["summer1d", "summer60d", "full425d", "cold425d", "shallow425d",
+         "shallow05m425d", "shallow1m425d", "warm425d"]
 
 
 def main():
