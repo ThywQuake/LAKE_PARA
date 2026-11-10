@@ -553,3 +553,16 @@ After both fixes, with the model initialization step (nstep 0):
   `LAKE`) modifies `E1/eps1` (and likely `lamw`/`Tw1`) between steps.
   This is the next routine to port; it explains the step-2/3 `lamw` and
   interior-temperature drift.
+
+## M3: 180-step status
+
+- With the initialization step (n=0), the first step reproduces the probe
+  `kt` to 8.5e-3 and `E1` to 4e-10; the later steps drift.
+- After 180 steps (1 h): surface 24.384 C vs reference 24.721 C (-0.336 K);
+  the 0.5/1 m layers are +0.037/+0.087 K and the deep layer is -0.018 K,
+  i.e. the model mixes too much heat downward.  `lamw` after the first step
+  matches; the drift starts at step 2.
+- The probe entry/exit indexing at steps 1/2 is ambiguous (the recorded
+  `E1` changes between entry and exit in a way `UPDATE_NEXT_TIMESTEP` cannot
+  explain), so the next step is to compare against `LAKE_exit` only and add
+  an `E1/eps1/lamw` trace at every step of a short run.

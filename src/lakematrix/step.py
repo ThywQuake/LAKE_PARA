@@ -380,8 +380,8 @@ def run_case1(params, grid, rows, nsteps=180, l=0, callback=None):
     st = ss.state
     dt = params.dt
     out = []
-    for n in range(1, nsteps + 1):
-        r = step_case1(ss, params, grid, rows, n, l, init_step=(n == 1))
+    for n in range(0, nsteps):
+        r = step_case1(ss, params, grid, rows, n, l, init_step=(n == 0))
         st.Tw1[l] = r["Tw1"]
         st.Sal1[l] = r["Sal1"]
         st.Tsoil1[l] = r["Tsoil1"]
