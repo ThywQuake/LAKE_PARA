@@ -46,6 +46,21 @@ not a proof for other switch combinations (M0.4 used testlake's defaults).
 The 1-day comparison is the same: 44 thermodynamic files identical, 25
 biogeochemistry files differ.
 
+## M0.4: reference cases
+
+The check-build reference set is in `ref/v1/` (git-ignored); see
+`docs/reference_cases.md` for the case table, event times and the regeneration
+command. `summer1d`, `summer60d`, `full425d`, `cold425d`, `shallow425d` (5 m)
+and `warm425d` all ran to completion. Two attempts to reach `layer_case 3`
+with a very shallow lake failed: `h10 = 0.5 m` gives `Tw1 = NaN` after 5
+hours, `h10 = 1 m` after 5651 hours (235 days), and neither reaches case 3
+(the water thickness never becomes zero). **Case 3 is therefore not covered
+by the natural reference set.** M4 must add either a stable shallow setup or
+a synthetic case-3 probe; record the choice here.
+
+The 5 m `shallow425d` does reach case 1 and 2 with earlier freeze-up (first
+ice at step 416160) and is kept as the shallow reference.
+
 ## M0.4: probe build and reader
 
 - Build: `tools/ref/make_probe_build.py --out <dir> --build`. On this macOS
