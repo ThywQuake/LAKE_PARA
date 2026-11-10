@@ -178,3 +178,19 @@ exact), forcing, and batch stacking.  The probe files live under
 - `SfcFlx_momsenlat` is being transcribed to `physics/sfcflx.py`; once it is in,
   `SENSLATMOM_FLUXES`/`HEATBALANCE` can be assembled and tested against the
   SFC probe.
+
+## M2: SfcFlx (surface fluxes)
+
+- `physics/sfcflx.py` is a direct port of `shared/SfcFlx_mod.F90`
+  (`SfcFlx_momsenlat`, `rhoair`, `roughness`, `satwvpres`, `spechum`,
+  `lwradwsfc`), preserving the two Newton iterations and every branch.
+- **Validation:** the probe records 49 calls of `SfcFlx_momsenlat` at step 1
+  (including the first, unphysical `T_s = 183 K` bracket).  For all 49 calls
+  the Python outputs match the Fortran outputs **exactly** (0.0 absolute
+  difference).  `tests/test_m2_sfcflx.py`.
+- Port notes: the FLake constant `tpl_grav = 9.81` differs from the LAKE-core
+  `g = 9.814`; the port keeps FLake's value locally, otherwise the fluxes would
+  change.  The Fortran module's `*_sf` side effects are dropped (pure
+  functions).
+- Next: wrap `SENSLATMOM_FLUXES` (PBLpar 3 path) and `HEATBALANCE`, then
+  compare against `HEATBALANCE` probes.

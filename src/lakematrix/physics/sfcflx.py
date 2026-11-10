@@ -187,8 +187,8 @@ def SfcFlx_roughness(fetch, U_a, u_star, h_ice):
     """
     if h_ice < h_Ice_min_flk:  # Water surface
         # The Charnock parameter as dependent on dimensionless fetch
-        c_z0u_fetch = (max(U_a, u_wind_min_sf) ** 2 / tpl_grav / fetch
-                       )  # Inverse dimensionless fetch
+        # (the inverse dimensionless fetch is formed first, as in the Fortran)
+        c_z0u_fetch = max(U_a, u_wind_min_sf) ** 2 / tpl_grav / fetch
         c_z0u_fetch = c_z0u_rough + c_z0u_ftch_f * c_z0u_fetch ** c_z0u_ftch_ex
         c_z0u_fetch = min(c_z0u_fetch, c_z0u_rough_L)  # Limit Charnock parameter
 
