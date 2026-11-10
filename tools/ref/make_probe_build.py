@@ -494,6 +494,25 @@ def patch_soilforlake_lake(path):
         path.write_text("".join(lines))
         return
 
+
+
+def patch_initvars(path):
+    lines = path.read_text().splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if 'call INIT_VAR' not in line:
+            continue
+        end = i
+        for j in range(i, min(i + 40, len(lines))):
+            if lines[j].rstrip().endswith(')'):
+                end = j
+                break
+        text = "".join(f'  call LM_PROBE("INIT_IN", "{n}", {n})\n' for n in
+                       ("Tsoil1", "wi1", "wl1", "Sals1", "Tw1", "h1",
+                        "l1", "hs1", "ls1"))
+        lines.insert(end + 1, text)
+        path.write_text("".join(lines))
+        return
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -544,6 +563,7 @@ def main():
     patch_kepsilon_lake(out / "source" / "model" / "lake.f90")
     patch_kepsilon_internal(out / "source" / "model" / "turb_mod.f90")
     patch_soilforlake_lake(out / "source" / "model" / "lake.f90")
+    patch_initvars(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

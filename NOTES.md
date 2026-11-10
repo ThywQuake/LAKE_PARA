@@ -500,3 +500,16 @@ water depth already includes a small evaporative loss.  Test
   `UPDATE_NEXT_TIMESTEP`) is the next suspect, since `T_SOLVER` itself
   matches the probe to 1e-11.
 - Test: `tests/test_m3_soilforlake.py`; suite **34 passed**.
+
+## M3: INIT_VAR probe and the initialization step
+
+- `INIT_IN` probe (step 0) confirms `init_state` matches raw `INIT_VAR`
+  exactly: side-column `Tsoil1` 0.0, `wi1/wl1` 0.0, deepest `Tsoil1` 1e-7.
+- The model's first `LAKE` call (nstep 0) is itself a step: probe step 1 is
+  the state after it.  `run_case1` now runs that initialization step first
+  (`init_step=True`, `dhw` without `dhwfsoil`), then the regular steps.
+- After the init step: step-1 `Tw1` matches to **2.2e-7**; `Tsoil1` still
+  differs by 0.117 K in the side columns (SOILCOLSTEMP input/output at the
+  init step).  Step 2 `Tw1` 0.0016 K; step 3 0.0109 K.
+- Next: probe `SOILCOLSTEMP` at the init step and fix the side-column
+  `Tsoilsurf`/`Tsoil1` residual.

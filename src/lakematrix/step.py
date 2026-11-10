@@ -159,7 +159,7 @@ def build_step_state(params, grid, l=0):
                      np.asarray(flux0), bathym=bathym)
 
 
-def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
+def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     """Case-1 chain through T_SOLVER (diagnostic integration helper)."""
     import numpy as np
     from .forcing import at_time
@@ -207,7 +207,10 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
     # water-depth increments
     dhwp = precip * dt
     dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
-    dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
+    if init_step:
+        dhw = dhwp + dhwe
+    else:
+        dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
     dhw0 = dhwp + dhwe
 
     # momentum
@@ -260,13 +263,13 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0):
                 uwind=uwind, vwind=vwind, ss=ss)
 
 
-def step_case1(ss, params, grid, rows, nstep=1, l=0):
+def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     """Full case-1 step (open water, no ice/snow)."""
     import numpy as np
     from .physics.density import ddens_dtemp, water_dens_ts
     from .physics.turb import turb_scales
 
-    r = step_case1_to_solver(ss, params, grid, rows, nstep, l)
+    r = step_case1_to_solver(ss, params, grid, rows, nstep, l, init_step=init_step)
     st = ss.state
     dt = params.dt
     M, ns, nc = params.M, params.ns, params.nsoilcols
@@ -363,8 +366,8 @@ def run_case1(params, grid, rows, nsteps=180, l=0, callback=None):
     st = ss.state
     dt = params.dt
     out = []
-    for n in range(1, nsteps + 1):
-        r = step_case1(ss, params, grid, rows, n, l)
+    for n in range(0, nsteps):
+        r = step_case1(ss, params, grid, rows, n, l, init_step=(n == 0))
         st.Tw1[l] = r["Tw1"]
         st.Sal1[l] = r["Sal1"]
         st.Tsoil1[l] = r["Tsoil1"]
