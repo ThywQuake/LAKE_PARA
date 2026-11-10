@@ -714,3 +714,16 @@ This is far better than the old 0.76 K spike but still above the 0.05 K
 tolerance on some stratified days.  Next: compare day-8 `lamw`/`E1`/`eps1`
 against the step-34560 probe to identify the remaining thermocline mixing
 drift.
+
+## M3: day-8 k-epsilon comparison
+
+At step 34560 (day 8):
+
+- `Tw1` max diff 0.081 K (5 m), `Tsoil1` 0.038 K;
+- `lamw` ours [2321, 6435, 13229, 17782] vs ref [4.8, 597, 4481, 7883]
+  — again too much mixing/too high `KT`;
+- `E1` diff 1.9e-4, `eps1` 4.2e-6.
+
+So the remaining 0.03-0.09 K on stratified days is a k-epsilon/`lamw`
+amplitude drift.  Next: compare `KE_in` `u1/u2/k2` at day 8 and trace the
+first diverging field from day 3.3 to 8.
