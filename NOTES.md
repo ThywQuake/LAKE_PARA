@@ -434,3 +434,12 @@ was correct.  Keeping `ddz05` 0-based (`s.ddz05 = grid.ddz05`):
 
 This is the last major physics module of case 1.  Next: the full `step.py`
 (`VERTADV`, radiation, soil, T_SOLVER, K_EPSILON, layers).
+
+## M3: step integration scaffold
+
+- `src/lakematrix/step.py`: `StepState` + `build_step_state` assemble the M1
+  state, soil state/geometry, momentum state and K_EPSILON state (radiation
+  still zero until the next step of the wiring).  Import/smoke only.
+- `step_case1` is not written yet; the next step is to wire
+  `BATHYMETRY → RAD_UPDATE → DENSITY → MOMENTUM → SOIL → T_SOLVER → S_DIFF →
+  K_EPSILON → TURB_SCALES → layers` and compare probe step 1 → step 2.
