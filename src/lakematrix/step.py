@@ -235,6 +235,14 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ss.mom.Tw1 = st.Tw1[l]
     ss.mom.Sal1 = st.Sal1[l]
     ss.mom.row = water_dens_ts(st.Tw1[l], st.Sal1[l], ss.bathym.preswat[l])
+    ss.mom.E1 = st.E[l]
+    ss.mom.eps1 = st.eps[l]
+    if ss.ke.k2 is not None:
+        ss.mom.k2 = np.array(ss.ke.k2[1:M + 2], copy=True)
+    if ss.ke.knum is not None:
+        ss.mom.knum = np.array(ss.ke.knum[1:M + 2], copy=True)
+    if ss.ke.veg_sw is not None:
+        ss.mom.veg_sw = np.array(ss.ke.veg_sw[1:M + 2], copy=True)
     ss.mom.h1 = float(st.h1[l])
     ss.mom.dhw = dhw
     ss.mom.dhw0 = dhw0

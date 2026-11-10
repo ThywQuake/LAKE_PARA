@@ -606,3 +606,17 @@ tag (e.g. `KE_in_1`, `KE_in_2`) so each step can be compared unambiguously.
   surface 25.523 vs 25.361 (+0.162 K); largest depth error +0.267 K at 5 m.
   This is now the M3 acceptance gap (plan: 0.05 K).
 - Tests: 34 passed.
+
+## M3: 1-day state comparison
+
+- Added the momentum carry of `E1/eps1/k2/knum/veg_sw` from the previous
+  K_EPSILON step (the Fortran momentum solver reads them); no change to the
+  1-day thermal error.
+- Against the step-4320 `TD_in` probe: `Tw1` differs by up to **1.05 K** and
+  `lamw` by **2.9e4**, i.e. the k-epsilon/`lamw` drift grows over the day
+  (the 1-day `water_temp` surface error is 0.16 K, but the state inside the
+  model diverges more).
+- This is now a K_EPSILON long-run state issue, not a one-step wiring issue.
+  The next step is to compare the step-4320 `KE_in/KE_out` fields and check
+  the SAVE-local carries (`Buoyancy1`, `FTKES/FTKEB`, `E_min`, `i_entrain`,
+  `Eseiches`, `AG`, `knum`).
