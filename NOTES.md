@@ -271,3 +271,11 @@ Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
   `tests/test_m3_surface_solver.py` (Fortran probes); suite 23 passed.
 - Next: `lsh%water` source (`LATERHEAT`/`SOILFORLAKE`), then the soil,
   momentum, turbulence and layer-thickness ports for the full case-1 step.
+
+## M3: MIXED_LAYER_CALC
+
+- `physics/turb.py`: `mixed_layer_calc` (max BV frequency, well-mixed
+  fallback, `H_mixed_layer = dzeta_05int(ml)*h`), tests in
+  `tests/test_m3_mixed_layer.py`.
+- Next: `TURB_SCALES` (the same `MIXED_LAYER_CALC` plus Wedderburn, Lake
+  number, thermocline diagnostics and `Rp/Rpdens`), then `K_EPSILON`.
