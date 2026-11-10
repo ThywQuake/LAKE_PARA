@@ -690,3 +690,15 @@ restarted momentum from the previous `u1` (initial profile).  Carrying
 - 3.33 days: max **0.033 K** (was 0.123 K), all depths <= 0.033.
 
 The 60-day job was restarted with this fix.
+
+## M3: surface velocity in SENSLATMOM — 3.33-day error 0.008 K
+
+`WaterSurfaceContext` was passing `u=v=0` to `SENSLATMOM_FLUXES`; the Fortran
+uses the surface water velocity `u1(1)/v1(1)` in the relative wind.  Using
+`ss.mom.u1[0]/v1[0]`:
+
+- 3.33-day max error **0.0079 K** (was 0.033 K);
+- this is a physically important coupling for wind events.
+
+The 60-day run completed earlier with the old (u=v=0) code: max 0.764 K at
+day 8/5 m, i.e. wind-event days.  Rerun with the fix.
