@@ -289,3 +289,10 @@ Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
 - Probe `TSC_in`/`TSC_out` at step 1: **every output matches exactly (0.0)**,
   including the `kor=0` limits (Rossby radius 3.8e19, Lake number clamped).
 - Test: `tests/test_m3_turb_scales.py`; suite 26 passed.
+
+## M3: salinity and layer update (case 1)
+
+- `physics/salinity.py`: `diff_coef_salinity` and `s_diff` (water branch;
+  fresh-water testlake yields zero, but the full branch is transcribed).
+- `physics/layers.py`: `advance_case1` (`h2=h1+dhw`, `ls2=ls1+dls`, `l2=0`).
+- Tests: `tests/test_m3_salinity_layers.py`; suite 28 passed.
