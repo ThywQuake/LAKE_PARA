@@ -302,3 +302,75 @@ def heatfluxsurf_snow(Tsn, T, cs, dens, dz, lams, itop, dt):
     dHdt = (0.5 / dt * cs[itop] * dens[itop] * dz[itop]
             * (Tsn[itop] - T[itop]))
     return eflux, dHdt, 0.0
+
+
+@dataclass
+class IceSurfaceContext:
+    """Inputs of `HEATBALANCE` for an ice or snow surface (case 2/3)."""
+    ice: object                 # physics.ice.IceState (mutated/returned)
+    snow: int
+    water: int
+    dt: float
+    fetch: float
+    uwind: float
+    vwind: float
+    u: float
+    v: float
+    tempair: float
+    pressure: float
+    humair: float
+    zref: float
+    roughness: float
+    relhums: float
+    aM: float
+    bM: float
+    l1: float
+    longwave: float
+    shortwave: float
+    netrad: float
+    cloud: float
+    albedo: float
+    albedo_lw: float
+    emissivity: float
+    radwater_integr: np.ndarray
+    radice_integr: np.ndarray
+    isoilcol: int = 1
+
+
+def heatbalance_ice(Tsurf, ctx: IceSurfaceContext):
+    """`T_DIFF` + `HEATBALANCE` for an ice/snow surface.
+
+    Returns `(HB, state)` where `state` holds the updated `IceState`, the
+    surface terms and `eflux0/eflux0_kinem`.
+    """
+    from .ice import t_diff_ice
+
+    st = ctx.ice
+    st = t_diff_ice(1, Tsurf, ctx.dt, ctx.snow, 1, ctx.water, 0,
+                    ctx.isoilcol, False, st)
+    if ctx.snow == 1:
+        eflux, dHdt, conv = heatfluxsurf_snow(
+            st.Tsn, st.T, st.cs, st.dens, st.dz, st.lams, st.itop, ctx.dt)
+        surftyp = SNOW
+    else:
+        eflux, dHdt, conv = heatfluxsurf_ice(
+            st.Ti1, st.Ti2, st.lami_v, st.ci_m_roi_v, st.l1, st.dhi0,
+            st.ddzi, [0.0] + [b.area_int for b in st.bathymice[1:]],
+            [0.0] + [b.area_half for b in st.bathymice[1:]], ctx.dt)
+        surftyp = ICE
+    slm = senslatmom_fluxes(
+        Tsurf, ctx.fetch, ctx.uwind, ctx.vwind, ctx.u, ctx.v, ctx.tempair,
+        ctx.pressure, ctx.humair, ctx.zref, ctx.roughness,
+        relhums=ctx.relhums, aM=ctx.aM, bM=ctx.bM, l1=ctx.l1, h1=0.0)
+    rb, rbs, sb, sr, swup = radbalance(
+        Tsurf, ctx.radwater_integr, ctx.radice_integr, surftyp,
+        longwave=ctx.longwave, shortwave=ctx.shortwave, netrad=ctx.netrad,
+        cloud=ctx.cloud, humair=ctx.humair, pressure=ctx.pressure,
+        tempair=ctx.tempair, albedo=ctx.albedo, albedo_lw=ctx.albedo_lw,
+        emissivity=ctx.emissivity)
+    HB, eflux0, eflux0_kinem = heatbalance(
+        dHdt, rb, rbs, eflux, conv, slm["hflux"], slm["Elatent"])
+    return HB, dict(ice=st, eflux=eflux, dHdt=dHdt, convect_flux=conv,
+                    hflux=slm["hflux"], Elatent=slm["Elatent"], Radbal=rb,
+                    Radbal_surf=rbs, eflux0=eflux0,
+                    eflux0_kinem=eflux0_kinem, cdmw=slm["cdmw"])
