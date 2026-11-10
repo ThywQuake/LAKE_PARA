@@ -282,3 +282,23 @@ def heatbalance_water(Tsurf, ctx: WaterSurfaceContext):
                     Elatent=slm["Elatent"], Radbal=float(rb),
                     Radbal_surf=float(rbs), eflux0=eflux0,
                     eflux0_kinem=eflux0_kinem, cdmw=slm["cdmw"])
+
+
+def heatfluxsurf_ice(Ti1, Ti2, lami_v, ci_m_roi_v, l1, dhi0, ddzi, area_int,
+                     area_half, dt):
+    """`HEATFLUXSURF` ice branch; returns (eflux, dHdt, convect_flux)."""
+    eflux = (-0.5 * lami_v[1] / area_int[1] * area_half[1]
+             * (Ti2[2] + Ti1[2] - Ti2[1] - Ti1[1]) / (ddzi[1] * l1))
+    dHdt = 0.5 / dt * ci_m_roi_v[1] * (
+        ddzi[1] * l1 * (Ti2[1] - Ti1[1])
+        + 0.5 * dhi0 * (Ti2[2] + Ti1[2] - Ti2[1] - Ti1[1]))
+    return eflux, dHdt, 0.0
+
+
+def heatfluxsurf_snow(Tsn, T, cs, dens, dz, lams, itop, dt):
+    """`HEATFLUXSURF` snow branch; returns (eflux, dHdt, convect_flux)."""
+    eflux = (-(lams[itop] + lams[itop + 1]) * 0.25
+             * (Tsn[itop + 1] + T[itop + 1] - Tsn[itop] - T[itop]) / dz[itop])
+    dHdt = (0.5 / dt * cs[itop] * dens[itop] * dz[itop]
+            * (Tsn[itop] - T[itop]))
+    return eflux, dHdt, 0.0
