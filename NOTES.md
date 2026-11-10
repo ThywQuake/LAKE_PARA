@@ -566,3 +566,18 @@ After both fixes, with the model initialization step (nstep 0):
   `E1` changes between entry and exit in a way `UPDATE_NEXT_TIMESTEP` cannot
   explain), so the next step is to compare against `LAKE_exit` only and add
   an `E1/eps1/lamw` trace at every step of a short run.
+
+## M3: K_EPSILON second step collapses
+
+Using the step-2 `KE_in/KE_out` probes:
+
+- probe `KE_in E1` = step-1 `KE_out E2` (2.639e-4) — our `out[0]` E1 matches;
+- probe `KE_in eps1` = 6.8e-6, but step-1 `KE_out eps2` = 7.0e-4 (so `eps1`
+  is changed between steps by something other than the pure store in
+  `UPDATE_NEXT_TIMESTEP`);
+- our step-2 `K_EPSILON` output collapses (`E2` 6e-11, `kt` ~0) whereas the
+  probe gives `E2` 4.85e-6 and `kt` 1.6–5742.  The input `eps1` (7e-4 vs
+  6.8e-6) is the most likely trigger.
+
+Next: trace our `ke` input fields at step 2 against the `KE_in` probe field
+by field; the missing/adjusted `eps1` (or another work array) is the cause.
