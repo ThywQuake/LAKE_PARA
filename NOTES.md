@@ -702,3 +702,15 @@ uses the surface water velocity `u1(1)/v1(1)` in the relative wind.  Using
 
 The 60-day run completed earlier with the old (u=v=0) code: max 0.764 K at
 day 8/5 m, i.e. wind-event days.  Rerun with the fix.
+
+## M3: 20-day rerun with surface-velocity fix
+
+20-day `summer60d` comparison (daily max over the water column):
+
+- days 1-6: 0.014-0.025 K;
+- days 8-20: 0.031-0.086 K, worst day 16 at 7 m (-0.086 K).
+
+This is far better than the old 0.76 K spike but still above the 0.05 K
+tolerance on some stratified days.  Next: compare day-8 `lamw`/`E1`/`eps1`
+against the step-34560 probe to identify the remaining thermocline mixing
+drift.
