@@ -307,6 +307,47 @@ def patch_t_solver(path):
     s = s[:end] + outs + s[end:]
     path.write_text(s)
 
+
+
+def patch_turb_scales(path):
+    s = path.read_text()
+    start = s.index("SUBROUTINE TURB_SCALES")
+    imp = s.index("implicit none", start)
+    s = s[:imp] + "use LM_PROBE_MOD, only : LM_PROBE\n" + s[imp:]
+    anchor = "  call MIXED_LAYER_CALC"
+    pos = s.index(anchor, start)
+    ins = "".join(f'  call LM_PROBE("TSC_in", "{n}", {n})\n' for n in
+                  ("M", "row", "k_turb_T_flux", "T_massflux", "eflux0_kinem",
+                   "turb_density_flux", "Buoyancy0", "tau", "kor"))
+    ins += ('  call LM_PROBE("TSC_in", "ddz", gsp%ddz)\n'
+            '  call LM_PROBE("TSC_in", "ddz2", gsp%ddz2)\n'
+            '  call LM_PROBE("TSC_in", "dzeta_int", gsp%dzeta_int)\n'
+            '  call LM_PROBE("TSC_in", "dzeta_05int", gsp%dzeta_05int)\n'
+            '  call LM_PROBE("TSC_in", "ddz05", gsp%ddz05)\n'
+            '  call LM_PROBE("TSC_in", "z_full", gsp%z_full)\n'
+            '  call LM_PROBE("TSC_in", "h1", ls%h1)\n'
+            '  call LM_PROBE("TSC_in", "vol", ls%vol)\n'
+            '  call LM_PROBE("TSC_in", "Tw2", wst%Tw2)\n'
+            '  call LM_PROBE("TSC_in", "Sal2", wst%Sal2)\n'
+            '  call LM_PROBE("TSC_in", "u2", wst%u2)\n'
+            '  call LM_PROBE("TSC_in", "v2", wst%v2)\n'
+            '  call LM_PROBE("TSC_in", "lamw", wst%lamw)\n'
+            '  call LM_PROBE("TSC_in", "lamsal", wst%lamsal)\n'
+            '  call LM_PROBE("TSC_in", "area_int", bathymwater(1:M+1)%area_int)\n'
+            '  call LM_PROBE("TSC_in", "Lx", bathymwater(1:M+1)%Lx)\n'
+            '  call LM_PROBE("TSC_in", "Ly", bathymwater(1:M+1)%Ly)\n'
+            '  call LM_PROBE("TSC_in", "RadWater_integr", RadWater%integr)\n')
+    s = s[:pos] + ins + s[pos:]
+    end = s.index("END SUBROUTINE TURB_SCALES")
+    outs = "".join(f'  call LM_PROBE("TSC_out", "{n}", {n})\n' for n in
+                   ("i_maxN", "H_mixed_layer", "maxN", "w_conv_scale",
+                    "T_conv_scale", "Wedderburn", "LakeNumber", "Rossby_rad",
+                    "ThermThick", "ReTherm", "RiTherm"))
+    outs += ('  call LM_PROBE("TSC_out", "Rp", trb%Rp)\n'
+             '  call LM_PROBE("TSC_out", "Rpdens", trb%Rpdens)\n')
+    s = s[:end] + outs + s[end:]
+    path.write_text(s)
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -351,6 +392,7 @@ def main():
     patch_surf_char(out / "source" / "model" / "t_solver_mod.f90")
     patch_tdiff(out / "source" / "model" / "t_solver_mod.f90")
     patch_t_solver(out / "source" / "model" / "t_solver_mod.f90")
+    patch_turb_scales(out / "source" / "model" / "phys_func.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

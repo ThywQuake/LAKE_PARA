@@ -279,3 +279,13 @@ Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
   `tests/test_m3_mixed_layer.py`.
 - Next: `TURB_SCALES` (the same `MIXED_LAYER_CALC` plus Wedderburn, Lake
   number, thermocline diagnostics and `Rp/Rpdens`), then `K_EPSILON`.
+
+## M3: TURB_SCALES
+
+- `physics/turb.py`: `turb_scales` (MIXED_LAYER_CALC plus w_conv/T_conv
+  scales, Wedderburn, Lake number, Rossby radius, thermocline thickness,
+  Re/Ri, Rp/Rpdens), and `density.ddens_dtemp/ddens_dsal/set_dens_consts`
+  for eos 5.
+- Probe `TSC_in`/`TSC_out` at step 1: **every output matches exactly (0.0)**,
+  including the `kor=0` limits (Rossby radius 3.8e19, Lake number clamped).
+- Test: `tests/test_m3_turb_scales.py`; suite 26 passed.

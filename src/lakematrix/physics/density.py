@@ -51,3 +51,35 @@ def density_w(temp, sal, preswat, eos=EOS_MCCATCHEON, lindens=0):
     if eos != EOS_MCCATCHEON:
         raise NotImplementedError(f"eos={eos} is not ported; v1 supports eos 5")
     return water_dens_ts(temp, sal)
+
+
+def ddens_dtemp(temp, sal):
+    """`DDENS_DTEMP` (phys_func.f90:325-360), eos 5."""
+    temp = np.asarray(temp, dtype=float)
+    sal = np.asarray(sal, dtype=float)
+    sg = sal * 1.0e3
+    out = (-(C.row0 / A12) * (temp - A14) / ((temp + A13) ** 2)
+           * ((temp + A13) * ((temp - A14) + 2.0 * (temp + A11))
+              - (temp + A11) * (temp - A14)))
+    a = -alpha2 + 2.0 * alpha3 * temp - 3.0 * alpha4 * temp ** 2 + 4.0 * alpha5 * temp ** 3
+    b = beta2 - 2.0 * beta3 * temp
+    return out + a * sg + b * sg ** 1.5
+
+
+def ddens_dsal(temp, sal):
+    """`DDENS_DSAL` (phys_func.f90:363-388), eos 5."""
+    temp = np.asarray(temp, dtype=float)
+    sal = np.asarray(sal, dtype=float)
+    sg = sal * 1.0e3
+    a = alpha1 - alpha2 * temp + alpha3 * temp ** 2 - alpha4 * temp ** 3 + alpha5 * temp ** 4
+    b = -beta1 + beta2 * temp - beta3 * temp ** 2
+    c = gamma1
+    return a + 1.5 * b * sg ** 0.5 + 2.0 * c * sg
+
+
+def set_dens_consts():
+    """`SET_DENS_CONSTS(5)` values: (DDENS_DTEMP0, DDENS_DSAL0, DENS_REF)."""
+    temp_ref, sal_ref = 15.0, 0.0
+    return (float(ddens_dtemp(temp_ref, sal_ref)),
+            float(ddens_dsal(temp_ref, sal_ref)),
+            float(water_dens_ts(temp_ref, sal_ref)))
