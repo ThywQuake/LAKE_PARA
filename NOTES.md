@@ -241,3 +241,16 @@ Effects: `tempair` now matches the probe **exactly** (0.0; before 6.1e-6 K) and
 - At step 1 `T_DIFF` is called 49 times; the first calls have the scanning
   surface temperatures `-90, -85, ...`; `PEMF`/`pt_down_f` are zero at this
   step.  This is the target for the `DIFF_COEF`/`T_DIFF` port.
+
+## M3: DIFF_COEF / T_DIFF (case 1)
+
+- `physics/tsolver.py`: `diff_coef_water`, `diff_coef_soil`, `t_diff_water`
+  (water column + water-soil interface + soil column, Dirichlet surface
+  temperature), using the 1-based Fortran indexing internally.
+- Validated against the 49 `T_DIFF` calls at step 1: `Tw2` max diff 3.6e-15,
+  `Tsoil2` 0.0.  The earlier 0.007 K discrepancy was entirely `lsh%water`
+  (lateral heat from the soil columns); the probe now records it and the port
+  uses it.
+- Test: `tests/test_m3_tdiff.py`; suite 19 passed.
+- Next: `T_SOLVER` (scan + Chorde iteration), and the source of `lsh%water`
+  (`LATERHEAT`/`SOILFORLAKE`).

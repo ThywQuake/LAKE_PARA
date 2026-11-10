@@ -284,7 +284,8 @@ def patch_tdiff(path):
                   ("Tsurf", "dt", "Tw1", "Tsoil1", "lamw", "area_int",
                    "area_half", "h1", "ddz", "dhw", "dhw0", "PEMF",
                    "pt_down_f", "lamsoil", "csoil", "rosoil", "dzs"))
-    s = s[:pos] + '\n  call LM_PROBE("TD_in", "RadWater_integr", RadWater%integr)\n' + ins + s[pos:]
+    s = s[:pos] + ('\n  call LM_PROBE("TD_in", "RadWater_integr", RadWater%integr)\n'
+                   '  call LM_PROBE("TD_in", "lsh_water", lsh%water(1:M+1))\n') + ins + s[pos:]
     anchor2 = "  else ! There is no snow, ice and water: only soil exists"
     pos2 = s.index(anchor2)
     outs = ('  call LM_PROBE("TD_out", "Tw2", Tw2)\n'
