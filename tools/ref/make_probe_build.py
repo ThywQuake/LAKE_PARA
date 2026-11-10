@@ -401,6 +401,36 @@ def patch_bathym2(path):
         path.write_text("".join(lines))
         return
 
+
+
+def patch_kepsilon_lake(path):
+    lines = path.read_text().splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if 'call K_EPSILON(' not in line or 'dnx' not in line:
+            continue
+        # only the case-1 call has dnx,dny on the first line
+        end = i
+        for j in range(i, min(i + 12, len(lines))):
+            if lines[j].rstrip().endswith(')'):
+                end = j
+                break
+        pre = "".join(f'  call LM_PROBE("KE_in", "{n}", {n})\n' for n in
+                      ("E1", "eps1", "k2", "k2t", "k5", "k2_mid", "k3_mid",
+                       "k5_mid", "l", "tf", "kt", "gamt", "gamu", "gamv",
+                       "row", "row2", "z_half", "u1", "v1",
+                       "u2", "v2", "um", "vm", "Tw1", "Tw2", "Sal1", "Sal2",
+                       "knum", "veg_sw", "lamw", "lamsal", "h1", "l1",
+                       "dhw", "dhw0", "vol", "botar", "b0", "tau_air",
+                       "tau_wav", "tau_i", "tau_gr", "uwind", "vwind",
+                       "fetch", "roughness"))
+        post = "".join(f'  call LM_PROBE("KE_out", "{n}", {n})\n' for n in
+                       ("E2", "eps2", "k2", "kt", "H_entrainment",
+                        "Buoyancy0", "Ri_bulk", "Eseiches"))
+        lines.insert(end + 1, post)
+        lines.insert(i, pre)
+        path.write_text("".join(lines))
+        return
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -448,6 +478,7 @@ def main():
     patch_turb_scales(out / "source" / "model" / "phys_func.f90")
     patch_momentum_lake(out / "source" / "model" / "lake.f90")
     patch_bathym2(out / "source" / "model" / "lake.f90")
+    patch_kepsilon_lake(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:

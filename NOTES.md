@@ -367,3 +367,16 @@ After the fix, `Tsoilsurf = (24.34744, 19.28719, 10.03557, 7.99107)` for the
 four side columns (matching the probe's top `Tsoil1`), `soilflux` is finite,
 and `lsh%water` matches `TD_in` to 3.4e-12.  Test:
 `tests/test_m3_laterheat.py`; suite 30 passed.
+
+## M3: K_EPSILON probe (first comparison)
+
+- Added `KE_in`/`KE_out` probes at the case-1 `call K_EPSILON`: 46 input
+  arrays/scalars and 8 outputs (`E2/eps2/k2/kt/H_entrainment/Buoyancy0/
+  Ri_bulk/Eseiches`).
+- First replay from the probe state (filling `KEpsilonState` and the grid
+  arrays `ddz/ddz2/ddz05/ddz052/ddz054/dzeta*`):
+  `e2` max diff 1.5e-4, `eps2` 1.9e-3, `k2` 2.6e-3, `kt` 3.4e3.
+  The `kt` difference is probably a missing `cw_m_row0` scaling or a
+  first-call state field; `e2/eps2` need debugging.
+- The K_EPSILON port is therefore **not yet validated**; the probe and replay
+  setup are in place for the next debugging round.
