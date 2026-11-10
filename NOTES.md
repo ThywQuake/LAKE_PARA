@@ -400,3 +400,10 @@ v25 `KE_in/KE_out` probes remain the entry-level reference.
   3e-20, and `E12/eps12` match.  The remaining `e2/eps2` divergence must be in
   the E/eps tridiagonal update; the next probe is after the two `PROGONKA`
   calls inside `iterat_keps` (`E_it2`/`eps_it2`).
+
+## M3: K_EPSILON replay helper
+
+`tools/ref/replay_kepsilon.py` builds a `KEpsilonState` from a `KE_in` probe
+and runs the port; `replay(dir)` is the debugging entry point.  First-iteration
+`work1/work2` and `rhotemp` match the probe; the E/eps solve is the remaining
+divergence.  Next probes: `FTKES/FTKEB/FS/FB` and the two `PROGONKA` results.
