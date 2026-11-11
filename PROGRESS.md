@@ -48,15 +48,18 @@ gitignored:
 |---|---|---|
 | `ref/` | 3.8 GB | Fortran reference cases (setup, meteo, results) |
 | `scratch/` | 2.2 GB | probe builds, probe runs, 20-day runs |
-| `../lakebatch/` | 2.6 MB source | Fortran model + probe build |
-| `../LAKE3.2/meteo/` | 0.8 MB | testlake forcing |
+| `../lakebatch/` build trees | 65 MB | Fortran builds + probe builds |
+
+The Fortran **source** and the testlake forcing are vendored in the repo:
+`vendor/lakebatch/core/source`, `vendor/LAKE3.2/meteo` (3.4 MB), so a clean
+clone can rebuild the check binary and rerun the reference cases.
 
 For the new machine, either copy these directories over the network/USB, or
 regenerate:
 
 ```bash
 # 1. Fortran check build (needs CMake/gfortran)
-cd lakebatch/core
+cd vendor/lakebatch/core
 CHECK=1 ./build.sh
 # 2. reference cases
 cd ../../lakematrix
