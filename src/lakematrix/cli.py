@@ -36,12 +36,17 @@ def main(argv=None):
     b.add_argument("cases", nargs="+")
     b.add_argument("--days", type=float, default=1.0)
     b.add_argument("--meteo", nargs="*", default=None)
+    b.add_argument("--jobs", type=int, default=1)
     b.add_argument("--out", default="results.nc")
     a = p.parse_args(argv)
 
     if a.cmd == "batch":
-        from .run import run_batch, save_netcdf
-        data = run_batch(a.cases, a.days, meteo_paths=a.meteo)
+        from .run import run_batch, run_batch_parallel, save_netcdf
+        if a.jobs > 1:
+            data = run_batch_parallel(a.cases, a.days, meteo_paths=a.meteo,
+                                      jobs=a.jobs)
+        else:
+            data = run_batch(a.cases, a.days, meteo_paths=a.meteo)
         out = save_netcdf(a.out, data, names=a.cases)
         print(out)
         return

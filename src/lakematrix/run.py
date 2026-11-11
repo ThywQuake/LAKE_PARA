@@ -79,6 +79,26 @@ def run_batch(case_dirs, days, meteo_paths=None, callback=None,
     )
 
 
+def _run_one(args):
+    case, days, meteo = args
+    return run_batch([case], days, meteo_paths=[meteo] if meteo else None)
+
+
+def run_batch_parallel(case_dirs, days, meteo_paths=None, jobs=4):
+    """Run one lake per process and stack the results (M5 throughput path)."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    case_dirs = [Path(p) for p in case_dirs]
+    met = meteo_paths or [None] * len(case_dirs)
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        parts = list(pool.map(_run_one, zip(case_dirs, [days] * len(case_dirs), met)))
+    out = dict(parts[0])
+    for key in ("water_temp", "soil_temp", "ice_temp", "h_water", "h_ice",
+                "h_snow", "snowmass", "layer_case"):
+        out[key] = np.concatenate([p[key] for p in parts], axis=0)
+    return out
+
+
 def save_netcdf(path, data, names=None):
     """Write a `(lake, time, ...)` NetCDF file from :func:`run_batch`."""
     path = Path(path)

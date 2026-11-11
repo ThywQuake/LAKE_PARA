@@ -1132,3 +1132,8 @@ can be run through this driver, but it is not yet the vectorised version.
 
 Tests added: `rad_update` vs an explicit recurrence, and the single/two-lake
 batch shapes and equality.
+
+`run_batch_parallel` runs one lake per process (`cli batch --jobs N`); the
+stacked output is bit-identical to the serial batch (tested with two lakes).
+`tools/compare_batch.py` compares `(lake, time, z)` output against several
+reference case directories, including `layers` thicknesses.
