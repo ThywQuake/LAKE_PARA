@@ -64,7 +64,7 @@ def sync_ice(ss, params, grid, st, l=0):
     ice.ls1 = float(st.ls1[l])
     ice.snowmass = float(st.snowmass[l])
     ice.hs1 = float(st.hs1[l])
-    ice.flag_snow = 0
+    ice.flag_snow = int(np.asarray(st.flag_snow)[l]) if hasattr(st, 'flag_snow') else 0
     ice.dhw = 0.0
     ice.dhw0 = 0.0
     ice.dhi = 0.0
@@ -86,12 +86,14 @@ def sync_ice(ss, params, grid, st, l=0):
     return ice
 
 
-def _radiation(ice, params, grid, l, Erad, shortwave, snow=False):
+def _radiation(ice, params, grid, l, Erad, shortwave, Erad_ice=None):
     ex = float(np.atleast_1d(params.extice)[l])
     extinct_ice = np.full((params.Mice, 4), ex)
+    if Erad_ice is None:
+        Erad_ice = Erad
     ice_flux, ice_int = rad_update(extinct_ice,
                                    grid.ddzi05[:params.Mice] * ice.l1,
-                                   np.asarray(FRACBANDS) * Erad)
+                                   np.asarray(FRACBANDS) * Erad_ice)
     ice.rad_integr_ice = np.asarray(ice_int)
     flux0 = np.asarray(ice_flux[-1])
     extinct_water = np.empty((params.M, 4))
@@ -131,7 +133,8 @@ def step_case2_to_solver(ss, params, grid, rows, nstep=1, l=0,
     day = int(np.atleast_1d(params.day0)[0])
     phi = float(np.atleast_1d(params.phi)[l])
     fetch = float(np.atleast_1d(params.fetch)[l])
-    surftyp = 2  # ice
+    snow = int(ice.flag_snow)
+    surftyp = 3 if snow else 2
     sc = surf_char(surftyp, year, month, day, hour, phi, fetch, uwind,
                    1.0e-2, int(np.atleast_1d(params.extwat)[l] * 0 + 1))
     albedo, albedo_lw, emis = sc["albedo"], sc["albedo_lw"], sc["emissivity"]
@@ -141,10 +144,15 @@ def step_case2_to_solver(ss, params, grid, rows, nstep=1, l=0,
                           float(st.h1[l]), params.M)
 
     Erad = shortwave * (1.0 - albedo)
-    _radiation(ice, params, grid, l, Erad, shortwave)
-
-    inc = ice_increments_nosnow(ice, dt, precip=precip, tempair=tempair,
-                                Elatent=float(ss.Elatent))
+    if snow:
+        snow_cond_heat_coef(ice, tempair)
+        Erad_ice = sr_botsnow(ice, Erad)
+        inc = ice_increments(ice, dt)
+    else:
+        Erad_ice = Erad
+        inc = ice_increments_nosnow(ice, dt, precip=precip, tempair=tempair,
+                                    Elatent=float(ss.Elatent))
+    _radiation(ice, params, grid, l, Erad, shortwave, Erad_ice=Erad_ice)
     ice.dhwfsoil = float(ss.soil.dhwfsoil)
 
     # soil columns at the current water temperature
@@ -164,7 +172,7 @@ def step_case2_to_solver(ss, params, grid, rows, nstep=1, l=0,
     ice.lsh_dice = np.asarray(lsh.dice)
 
     ctx = IceSurfaceContext(
-        ice=ice, snow=0, water=1, dt=dt, fetch=fetch, uwind=uwind,
+        ice=ice, snow=snow, water=1, dt=dt, fetch=fetch, uwind=uwind,
         vwind=vwind, u=float(ss.mom.u1[0]), v=float(ss.mom.v1[0]),
         tempair=tempair, pressure=pressure, humair=humair, zref=2.0,
         roughness=sc["roughness"], relhums=sc["relhums"], aM=sc["aM"],
@@ -178,16 +186,20 @@ def step_case2_to_solver(ss, params, grid, rows, nstep=1, l=0,
         return heatbalance_ice(t, ctx)
 
     r = t_solver(fn, nstep, surftyp, ss.surftyp_prev, ss.Tsurf_prev)
-    ice = t_diff_ice(0, r["Tsurf3"], dt, 0, 1, 1,
+    ice = t_diff_ice(0, r["Tsurf3"], dt, snow, 1, 1,
                      1 if ice.ls1 != 0.0 else 0, params.nsoilcols, False,
                      r["state"]["ice"])
     ss.Tsurf_prev = r["Tsurf3"]
     ss.surftyp_prev = surftyp
+    ss.cdmw = float(r["state"].get("cdmw", ss.cdmw))
     return dict(Tsurf3=r["Tsurf3"], Bal3=r["Bal3"], iter=r["iter"],
                 state=dict(ice=ice, Elatent=r["state"]["Elatent"],
-                           eflux0_kinem=r["state"]["eflux0_kinem"]),
+                           eflux0_kinem=r["state"]["eflux0_kinem"],
+                           cdmw=r["state"].get("cdmw")),
                 ice=ice, row=row, ml=ml, sc=sc, inc=inc, integ=None,
-                uwind=float(uwind), vwind=float(vwind), fetch=fetch)
+                uwind=float(uwind), vwind=float(vwind), fetch=fetch,
+                snow=snow, Erad=Erad, tempair=float(tempair),
+                precip=float(precip))
 
 
 def step_case2(ss, params, grid, rows, nstep=1, l=0, init_step=False):
@@ -215,10 +227,25 @@ def step_case2(ss, params, grid, rows, nstep=1, l=0, init_step=False):
 
     row2 = water_dens_ts(Tw2, Sal2)
 
+    if r["snow"]:
+        ice.T[ice.itop:ice.ms + 1] = ice.Tsn[ice.itop:ice.ms + 1]
+        sc_out = snow_calc(ice, dt, ts=float(ice.T[ice.itop]),
+                           t2=float(r["tempair"]),
+                           snow_sc=float(ice.snowmass),
+                           eflux=float(r["state"].get("eflux", 0.0)),
+                           Erad=float(r["Erad"]),
+                           Elatent=float(r["state"]["Elatent"]),
+                           precip=float(r["precip"]), pheat=0.0)
+        ice.snowmass = float(sc_out["snow_sc"])
+        ice.snowmass_init = ice.snowmass
+        ice.hs1 = float(sc_out["hsnow"])
+        ice.snmelt = float(sc_out["snmelt"])
+        ice.flag_snow_init = 0
+
     # momentum (after T_SOLVER, as in lake.f90:1546/1811)
     ss.mom_params.uwind = float(r["uwind"])
     ss.mom_params.vwind = float(r["vwind"])
-    ss.mom_params.cdmw = ss.cdmw
+    ss.mom_params.cdmw = float(r["state"].get("cdmw") or 1.0e-3)
     ss.mom_params.fetch = float(r["fetch"])
     ss.mom.Tw1 = st.Tw1[l]
     ss.mom.Sal1 = st.Sal1[l]
@@ -257,17 +284,20 @@ def step_case2(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ke.row = np.r_[0, ss.mom.row] if np.size(ss.mom.row) == M + 1 else np.asarray(r["row"])
     ke.row2 = np.asarray(row2)
     ke.h1 = float(st.h1[l])
+    ke.l1 = float(st.l1[l])
+    ke.ls1 = float(st.ls1[l])
     ke.dhw = ice.dhw
     ke.dhw0 = ice.dhw0
     ke.vol = float(ss.bathym.vol[l])
     ke.botar = float(ss.bathym.botar[l])
-    ke.b0 = 0.0
+    b0_val = mom_res.b0 if mom_res.b0 is not None else (1.0 if float(st.l1[l]) > 0.0 else 0.0)
+    ke.b0 = float(b0_val)
     ke.Buoyancy0 = (C.g / C.row0 * float(ddens_dtemp(st.Tw1[l][0], 0.0))
                     * float(r["state"]["eflux0_kinem"]))
-    ke.tau_air = 0.0
-    ke.tau_wav = 0.0
-    ke.tau_i = 0.0
-    ke.tau_gr = 0.0
+    ke.tau_air = float(mom_res.tau_air)
+    ke.tau_wav = float(mom_res.tau_wav)
+    ke.tau_i = float(mom_res.tau_i or 0.0)
+    ke.tau_gr = float(mom_res.tau_gr)
     ke.uwind = float(r["uwind"])
     ke.vwind = float(r["vwind"])
     ke.fetch = float(np.atleast_1d(params.fetch)[l])
@@ -282,13 +312,15 @@ def step_case2(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     lay = dict(h1=float(st.h1[l]) + ice.dhw,
                l1=float(st.l1[l]) + ice.dhi,
                ls1=float(st.ls1[l]) + ice.dls,
-               hs1=float(st.hs1[l]), snowmass=float(st.snowmass[l]))
+               hs1=float(ice.hs1), snowmass=float(ice.snowmass),
+               flag_snow=int(ice.flag_snow), itop=int(ice.itop))
     return dict(Tw1=Tw2[1:], Sal1=Sal2[1:],
                 Tsoil1=ss.soil.Tsoil1[1:, 1:], Ti1=ice.Ti2[1:],
                 Tis1=ice.Tis2[1:], h1=lay["h1"], l1=lay["l1"],
                 ls1=lay["ls1"], hs1=lay["hs1"],
                 snowmass=lay["snowmass"],
                 E1=ke.e1[1:], eps1=ke.eps1[1:], lamw=lamw_new,
+                kt=ke.kt[1:],
                 Elatent=float(r["state"]["Elatent"]),
                 dhwfsoil=float(ss.soil.dhwfsoil), dhw=ice.dhw,
                 dhw0=ice.dhw0, Tsurf3=r["Tsurf3"], Bal3=r["Bal3"],
@@ -309,6 +341,7 @@ def run_case2(params, grid, rows, nsteps=180, l=0, callback=None,
         st.Tis1[l] = r["Tis1"]; st.h1[l] = r["h1"]
         st.l1[l] = r["l1"]; st.ls1[l] = r["ls1"]
         st.hs1[l] = r["hs1"]; st.snowmass[l] = r["snowmass"]
+        st.flag_snow[l] = r["flag_snow"]; st.itop[l] = r["itop"]
         st.E[l] = r["E1"]; st.eps[l] = r["eps1"]; st.lamw[l] = r["lamw"]
         st.time[l] += dt; st.nstep[l] = n
         ss.Elatent = r["Elatent"]

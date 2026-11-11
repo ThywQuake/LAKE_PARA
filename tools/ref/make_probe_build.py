@@ -33,6 +33,8 @@ ENTRY_VARS = [
     "tempair", "humair", "pressure", "uwind", "vwind", "precip",
     "longwave", "shortwave", "cloud", "netrad", "time", "nstep",
     "lamw", "E1", "eps1", "k2", "kt", "dhwfsoil", "dhw", "dhw0",
+    "T", "Tsn", "cs", "dens", "dz", "lams", "itop", "flag_snow",
+    "flag_snow_init",
 ]
 
 
@@ -414,10 +416,10 @@ def patch_bathym2(path):
 
 def patch_kepsilon_lake(path):
     lines = path.read_text().splitlines(keepends=True)
+    inserts = []
     for i, line in enumerate(lines):
-        if 'call K_EPSILON(' not in line or 'dnx' not in line:
+        if 'call K_EPSILON(' not in line:
             continue
-        # only the case-1 call has dnx,dny on the first line
         end = i
         for j in range(i, min(i + 12, len(lines))):
             if lines[j].rstrip().endswith(')'):
@@ -435,10 +437,11 @@ def patch_kepsilon_lake(path):
         post = "".join(f'  call LM_PROBE("KE_out", "{n}", {n})\n' for n in
                        ("E2", "eps2", "k2", "kt", "H_entrainment",
                         "Buoyancy0", "Ri_bulk", "Eseiches"))
+        inserts.append((i, end, pre, post))
+    for i, end, pre, post in reversed(inserts):
         lines.insert(end + 1, post)
         lines.insert(i, pre)
-        path.write_text("".join(lines))
-        return
+    path.write_text("".join(lines))
 
 
 

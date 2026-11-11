@@ -1058,3 +1058,32 @@ at `full425d` step 500000 (`probe-w3/499999/LAKE_exit` + `SOILF_out` +
 These are inside the revised solver-noise acceptance; the snow branch,
 case transitions and `lamw`/`K_EPSILON` inputs are the next M4 items.  The
 60-day `summer60d` rerun with the step-3 bathymetry fix is still running.
+
+## M4: case-2 snow step (validated) and k-epsilon ice flags
+
+The snow branch of `step2.py` now follows case 2.1: `snow_cond_heat_coef`,
+`SR_botsnow`, `ice_increments` (snow variant), `T_SOLVER` with `snow=1`, then
+`snow_calc` for the pack, with `T = Tsn` before the call as in `SNOWTEMP`.
+
+Validated at `full425d` step 545580 (snow depth 0.0332 m, ice 0.1909 m),
+initialised from `probe-build5` state: `Tw1` 1.5e-6, `Tsoil1` 7.2e-7, `Ti1`
+8.7e-6 K, `Tsurf3` 1e-7 K, `l1` 1.9e-7 m, `hs1` 2.6e-5 m, `snowmass`
+1.9e-3 kg/m2 (0.026 mm water equivalent).  `kt`/`eps` also match to ~1e-4
+relative after the fixes below.
+
+K-epsilon fixes found by this comparison:
+
+- `ke.l1`/`ke.ls1` were never set in the case-2 step, so K_EPSILON always took
+  the open-water branch (`eps_min = 1e-12`, wind-stress surface flux).  With
+  the ice thickness set, the ice branch (`eps_min` from `Racr`, `tau_i`
+  surface flux) matches the probe.
+- For thick ice `MOMENTUM_SOLVER` leaves `b0` undefined; use `b0 = 1` when
+  `l1 > 0` unless momentum returned a value.
+- `ke.b0` now comes from `MOMENTUM_SOLVER` (thin ice) or 1 (thick ice).
+
+The probe build now also records the snow state (`T`, `Tsn`, `cs`, `dens`,
+`dz`, `lams`, `itop`, `flag_snow`, `flag_snow_init`) in `LAKE_entry`/`_exit`,
+and every `K_EPSILON` call has `KE_in`/`KE_out`.
+
+Case transitions (1 -> 2 freeze-up, 2 -> 1 melt, 2/3 -> 3/1) are the next
+M4 item; `water_freeze_melt` and the layer-case selector still need porting.

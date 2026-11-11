@@ -36,6 +36,8 @@ class State:
     ls1: np.ndarray
     snowmass: np.ndarray
     snmelt: np.ndarray
+    flag_snow: np.ndarray    # (L,) 0/1
+    itop: np.ndarray         # (L,) snow index
     E: np.ndarray          # (L, M+1)
     eps: np.ndarray
     lamw: np.ndarray       # (L, M)
@@ -52,6 +54,7 @@ def _empty(params, grid):
         Tsoil1=z(ns, nc), Sals1=z(ns, nc), wi1=z(ns, nc), wl1=z(ns, nc),
         h1=np.zeros(L), l1=np.zeros(L), hs1=np.zeros(L), ls1=np.zeros(L),
         snowmass=np.zeros(L), snmelt=np.zeros(L),
+        flag_snow=np.zeros(L, dtype=np.int64), itop=np.zeros(L, dtype=np.int64),
         E=z(M + 1), eps=z(M + 1), lamw=z(M),
         time=np.zeros(L), nstep=np.zeros(L, dtype=np.int64),
         layer_case=np.ones(L, dtype=np.int64),
