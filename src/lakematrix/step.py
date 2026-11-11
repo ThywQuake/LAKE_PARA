@@ -174,6 +174,31 @@ def build_step_state(params, grid, l=0):
                      np.asarray(flux0), bathym=bathym)
 
 
+def _refresh_geometry(ss, params, grid, l, st):
+    """Recompute BATHYMETRY for the current water thickness.
+
+    The Fortran calls ``BATHYMETRY`` on every step (shared prologue and again
+    inside case 1), so the layer areas/widths must not stay at their initial
+    values.  They feed the surface heat balance, the multi-column soil
+    interpolation and momentum/k-epsilon.
+    """
+    bathym = bathymetry(params, grid, st, C.pref)
+    ss.bathym = bathym
+    geom = _zsoil_geom(params, grid, l, st, bathym)
+    ss.soil_geom = geom
+    ss.soil.geom = geom
+    mp = ss.mom_params
+    mp.area_int = bathym.area_int[l]
+    mp.area_half = bathym.area_half[l]
+    mp.Lx = bathym.Lx[l]
+    mp.Ly = bathym.Ly[l]
+    mp.Lx_half = bathym.Lx_half[l]
+    mp.Ly_half = bathym.Ly_half[l]
+    ss.ke.area_int = np.r_[0, bathym.area_int[l]]
+    ss.ke.area_half = np.r_[0, bathym.area_half[l]]
+    return bathym
+
+
 def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     """Case-1 chain through T_SOLVER (diagnostic integration helper)."""
     import numpy as np
@@ -184,6 +209,7 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
 
     st = ss.state
     dt = params.dt
+    _refresh_geometry(ss, params, grid, l, st)
     f = at_time(rows, nstep * dt, interval=float(np.atleast_1d(params.interval)[0]))
     tempair, pressure, longwave, shortwave = f[0] - C.Kelvin0, f[1], f[2], f[3]
     uwind, vwind, humair, precip = f[4], f[5], f[6], f[7]

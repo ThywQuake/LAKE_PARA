@@ -957,15 +957,70 @@ hide real drift.  The existing step-3 `Tw1`/`Tsoil1` difference is still tracked
 as a diagnostic issue (the `Tsoil2`/`SOILFORLAKE` timing discrepancy described
 above), not as an acceptance failure.
 
-### Decisive follow-up: 1-ULP perturbation experiment
+### 1-ULP perturbation experiment (done)
 
-Not yet possible on this machine (no `gfortran`/`cmake`; the vendored tree has
-no `core/build/CMakeLists.txt`).  On a machine with the `lakebatch` build:
+The vendored tree has no `core/build/CMakeLists.txt`; a working one was
+reconstructed at `/root/lakebatch/core/build/CMakeLists.txt` (all 81 sources,
+`-O3 -cpp -DFCOMPILER=2 -fopenmp -ffree-line-length-none
+-fallow-argument-mismatch`, linked with `netcdff`/`netcdf`).  `CHECK=1
+core/build.sh` then builds `core/build-check-linux/lake.out`.
 
-1. Build the check binary (`CHECK=1 core/build.sh`).
-2. Perturb one forcing value in the `summer1d` driver by 1 ULP.
-3. Run one day and compare against the unperturbed Fortran result.
+A fresh copy of `summer1d` was run with `OMP_NUM_THREADS=1`.  The output
+selections need `results/{debug,control_point}` and
+`results/test/{time_series,monthly,daily}` to exist, otherwise the model stops
+at the first output.  Results:
 
-If Fortran-vs-Fortran differs by more than the revised threshold, the old
-criterion is provably unattainable and the new threshold is justified.  Record
-the measured spread here.  Until then the revised thresholds are provisional.
+| Comparison | day-1 max | max within the day |
+|---|---|---|
+| rebuilt Fortran vs tracked reference | 3.6e-4 K | 1.3e-2 K (first hour) |
+| Fortran with one forcing value +1 ULP vs unperturbed Fortran | **5.8e-4 K** | 1.6e-2 K |
+
+The 1-ULP perturbation is 5.7e-14 K in `tempair`; it is a pure floating-point
+perturbation, not a physical change.  Its effect after one day is 5.8e-4 K,
+i.e. **580 times larger than the old 1e-6 K criterion**.  Therefore the old
+one-day criterion is provably unattainable by two non-bit-identical builds,
+independent of translation correctness.
+
+The rebuilt check binary itself differs from the tracked reference by
+3.6e-4 K after one day (1.3e-2 K at the first hourly output).  This is a
+build/compiler sensitivity (OpenMP and a different NetCDF/gfortran version),
+not a JAX error.  The JAX one-day error of 2.2e-4 K is **inside** this
+Fortran-vs-Fortran spread; the revised 1e-3 K threshold is only 1.7x above the
+measured 1-ULP sensitivity, so it is tight rather than generous.
+
+Consequence: the revised §5 thresholds are adopted (the 1-day value stays at
+1e-3 K); the old 1e-6 K value is withdrawn.  The step-3 `Tsoil2` difference
+remains a diagnostics issue, not an acceptance failure.
+
+## M3: stale bathymetry was the step-3 soil root cause (fixed)
+
+`step_case1_to_solver` reused the bathymetry arrays computed once by
+`build_step_state`, while the Fortran calls `BATHYMETRY` every step with the
+current `h1`.  At step 1 `h1 == h10`, and at step 2 the previous step's `dhw`
+is zero, so steps 1 and 2 matched.  From step 3 the water thickness has
+changed by `dhw ~ -1.4e-4 m`; the stale layer areas/widths shifted
+`TSURFSOILCOL`'s area-weighted side-column surface temperature by up to
+2.8e-4 K, which then propagated into `Tsoil1`.  This also explains why the
+error appeared only in the surface soil cell of the side columns.
+
+Fix: `_refresh_geometry()` recomputes `bathymetry`, `SoilGeometry` and the
+momentum/k-epsilon area arrays at the start of every step.
+
+`full425d` step 3, before -> after (probe `LAKE_exit`):
+
+| Field | Before | After |
+|---|---|---|
+| `Tw1` | 5.15e-7 | **8.97e-9** |
+| `Tsoil1` | 2.84e-4 | **2.04e-6** |
+| `lamw` | 9.64e-5 | **2.04e-6** |
+
+`Tsoilsurf` (probe `SCOL`) improves from 2.8e-4 K to ~1e-6 K when the
+bathymetry is recomputed at the current `h1`.  The remaining `Tsoil1` 2e-6 is
+the residual area-interpolation difference and is inside the solver noise
+floor.
+
+One-day comparison against the tracked reference moved from 2.2e-4 to 3.7e-4 K
+(against the rebuilt Fortran: 5.1e-4 to 6.2e-4 K).  Both numbers are at the
+Fortran 1-ULP sensitivity (5.8e-4 K) and build-to-build spread (3.6e-4 K), so
+the day-1 aggregate cannot resolve the change; the step-3 probe is the
+decisive measurement.  The 60-day rerun with this fix is in progress.
