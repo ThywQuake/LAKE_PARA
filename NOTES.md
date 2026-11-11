@@ -780,3 +780,16 @@ the first non-bit-identical quantity, rather than more long runs.
 - Effect: `zsoil` matches the probe **exactly** (0.0); `INIT_IN` deepest
   `Tsoil1` 8.9e-16; after one step `Tsoil1` 1.8e-15, `Tw1` 3.5e-13.
 - 1-day `summer1d` max error **0.00517 K** (was 0.0135); 3.33 days 0.0081 K.
+
+## M3: dhw order restored; step-2 near bit-exact
+
+- `dhw` is again computed **before** `SOILCOLSTEMP` using the previous
+  step's `dhwfsoil` (Fortran order).
+- Step 1: `Tw1` 3.5e-13, `Tsoil1` 1.8e-15.
+- Step 2: `Tw1` **7.1e-10**, `Tsoil1` 2.1e-14, `h1` 0.
+- Step 3 still drifts: `Tw1` 3.0e-5, `Tsoil1` 2.8e-4, `h1` -2.3e-5.
+  Probe step-3 `dhw=-0.00013827` vs our -0.00016116; the difference is the
+  `dhwfsoil` carried out of step 2.  `SOILF_out` at step 2 gives -0.0001606,
+  but the model's step-3 `dhw` implies -0.0001377, so the `dhwfsoil`
+  accumulation/overwrite order between side columns and the deepest
+  `SOILFORLAKE` still needs to be aligned.

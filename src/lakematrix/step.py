@@ -205,7 +205,14 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     _, integr = rad_update(extinct, grid.ddz05[:M] * float(st.h1[l]), flux0)
 
     # soil columns at the current water temperature (the soil fluxes also
-    # determine dhwfsoil, which enters this step's dhw)
+    # water-depth increments use the PREVIOUS step's dhwfsoil, as in the
+    # Fortran order (dhw before SOILCOLSTEMP)
+    dhwp = precip * dt
+    dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
+    dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
+    dhw0 = dhwp + dhwe
+
+    # soil columns at the current water temperature
     ss.soil.Tw1 = np.r_[0, st.Tw1[l]]
     ss.soil.Ti1 = np.r_[0, st.Ti1[l]]
     ss.soil.Tis1 = np.r_[0, st.Tis1[l]]
@@ -214,15 +221,6 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     soil_cond_heat_coef(ss.soil, ss.soil_params, is_=params.nsoilcols)
     ss.soil = soilcolstemp(ss.soil, ss.soil_params, dt)
     lsh = laterheat(ss.soil, ss.soil_params, ss.soil.soilflux, onlywater=True)
-
-    # water-depth increments
-    dhwp = precip * dt
-    dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
-    if init_step:
-        dhw = dhwp + dhwe
-    else:
-        dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
-    dhw0 = dhwp + dhwe
 
     # momentum
     ss.mom_params.uwind = float(uwind)
