@@ -38,6 +38,10 @@ class Grid:
 def create_grid(M, Mice, ns, d_surf=1.0e-2, d_bot=1.0e-2,
                 soil_depth=10.0, upper_layer=0.02):
     """Create the static grid, matching `GRID_CREATE` and `SOIL_COND_HEAT_COEF`."""
+    # NUMERIC_PARAMS::UpperLayer = 0.02 is a default-real literal stored in
+    # a real(8) variable: round it to float32 first.
+    upper_layer = float(np.float32(upper_layer))
+
     # Water grid, Burchard (2002), GRID_CREATE lines 14-22.
     i = np.arange(M, dtype=float)
     denom = np.tanh(d_surf) + np.tanh(d_bot)
@@ -70,7 +74,10 @@ def create_grid(M, Mice, ns, d_surf=1.0e-2, d_bot=1.0e-2,
     if upper_layer > 0.0:
         power = np.log(upper_layer / soil_depth) / np.log(1.0 / float(ns - 1))
         for k in range(1, ns):
-            zsoil[k] = (float(k) / float(ns - 1)) ** power * soil_depth
+            # Fortran: 1.*(i-1)/(ns-1) is a default-real division, rounded
+            # to float32 before the (double) power.
+            base = float(np.float32(float(k) / float(ns - 1)))
+            zsoil[k] = base ** power * soil_depth
     else:
         for k in range(1, ns):
             zsoil[k] = float(k) / float(ns - 1) * soil_depth

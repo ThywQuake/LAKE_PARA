@@ -770,3 +770,13 @@ acceptable under §5.  The gap is in accumulated step-level differences, not in
 any single module (routine probes are 1e-10 or better).  Next must be a
 whole-step probe comparison (`LAKE_entry`/`LAKE_exit`) field by field to find
 the first non-bit-identical quantity, rather than more long runs.
+
+## M3: zsoil/UpperLayer exactness
+
+- `NUMERIC_PARAMS::UpperLayer = 0.02` is a default-real literal stored in a
+  real(8) variable, and `zsoil(i) = (1.*(i-1)/(ns-1))**pow*depth` uses a
+  default-real base.  `grid.create_grid` now rounds `upper_layer` and the
+  base to float32.
+- Effect: `zsoil` matches the probe **exactly** (0.0); `INIT_IN` deepest
+  `Tsoil1` 8.9e-16; after one step `Tsoil1` 1.8e-15, `Tw1` 3.5e-13.
+- 1-day `summer1d` max error **0.00517 K** (was 0.0135); 3.33 days 0.0081 K.
