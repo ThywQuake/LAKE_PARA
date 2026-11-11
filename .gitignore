@@ -7,7 +7,13 @@ __pycache__/
 .pytest_cache/
 
 # Generated reference data and probes (reproducible from tools/ref)
-/ref/
+/ref/*
+!/ref/v1/
+/ref/v1/*
+!/ref/v1/*/
+/ref/v1/*/results/
+/ref/v1/*/run.log
+/ref/v1/*/status
 /probe/
 /probe-build-local/
 
