@@ -435,6 +435,64 @@ def create_initial_ice(params, ss, nstep, rows, l=0):
     ss.Tsurf_prev = -999.0
 
 
+def _post_step(params, r):
+    """Post-step thickness corrections (lake.f90:2202-2242)."""
+    h = float(r["h1"])
+    li = float(r.get("l1", 0.0))
+    ls = float(r.get("ls1", 0.0))
+    hs = float(r.get("hs1", 0.0))
+    sm = float(r.get("snowmass", 0.0))
+    half = 0.5 * C.min_ice_thick
+    zeros_w = lambda: (np.zeros_like(r["Tw1"]), np.zeros_like(r["Sal1"]))
+    if li < half and h != 0.0:
+        h += li * C.roi_d_row0
+        if h < C.min_water_thick:
+            h = 0.0
+            r["Tw1"], r["Sal1"] = zeros_w()
+        li = 0.0
+        if "Ti1" in r:
+            r["Ti1"] = np.zeros_like(r["Ti1"])
+    if h < C.min_water_thick and li == 0.0:
+        h = 0.0
+        r["Tw1"], r["Sal1"] = zeros_w()
+    if li < half and h == 0.0:
+        li = 0.0
+        if "Ti1" in r:
+            r["Ti1"] = np.zeros_like(r["Ti1"])
+    if (0.0 < hs < C.dzmin) or (hs > 0.0 and li == 0.0 and h != 0.0):
+        h += sm * C.row0_d_roi
+        if h < C.min_water_thick:
+            li += h * C.row0_d_roi
+            h = 0.0
+            r["Tw1"], r["Sal1"] = zeros_w()
+            if li < half:
+                li = 0.0
+                if "Ti1" in r:
+                    r["Ti1"] = np.zeros_like(r["Ti1"])
+        hs = 0.0
+        sm = 0.0
+        r["flag_snow"] = 0
+        r["itop"] = 0
+    if hs == 0.0 and int(r.get("flag_snow", 0)) == 1:
+        r["flag_snow"] = 0
+        r["itop"] = 0
+    if ls < half and h != 0.0:
+        h += ls * C.roi_d_row0
+        ls = 0.0
+        if "Tis1" in r:
+            r["Tis1"] = np.zeros_like(r["Tis1"])
+    if ls < half and h == 0.0:
+        ls = 0.0
+        if "Tis1" in r:
+            r["Tis1"] = np.zeros_like(r["Tis1"])
+    r["h1"], r["l1"], r["ls1"] = h, li, ls
+    if "hs1" in r:
+        r["hs1"] = hs
+    if "snowmass" in r:
+        r["snowmass"] = sm
+    return r
+
+
 def step_any(ss, params, grid, rows, nstep, l=0, nstep0=1):
     """One step with the Fortran case selection and 1->2 / 2->1 transitions."""
     from .step import step_case1
@@ -470,6 +528,7 @@ def step_any(ss, params, grid, rows, nstep, l=0, nstep0=1):
         st.layer_case[l] = 1
     elif lc == 2:
         r = step_case2(ss, params, grid, rows, nstep, l)
+        _post_step(params, r)
         st.Tw1[l] = r["Tw1"]; st.Sal1[l] = r["Sal1"]
         st.Tsoil1[l] = r["Tsoil1"]; st.Ti1[l] = r["Ti1"]; st.Tis1[l] = r["Tis1"]
         st.h1[l] = r["h1"]; st.l1[l] = r["l1"]; st.ls1[l] = r["ls1"]
