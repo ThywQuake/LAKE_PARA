@@ -742,3 +742,17 @@ The velocity field is already 13% off by day 8, and the k-epsilon diffusivity
 inherits it.  Next: compare the momentum state at days 1/2/3 (probe
 `MOM_1110_in/out`) to find the first momentum divergence; candidates are the
 seiche/surface-slope state (`alphax/alphay`, `hx*`) and `k2_old`.
+
+## M3: day-1 momentum inputs
+
+Against `MOM_1110_in` at step 4320:
+
+- `u1` 1.5e-5, `v1` 7.9e-5, `E1` 4.5e-8, `eps1` 2.8e-9, `k2` 2.2e-6;
+- `u_star` 6.475e-4 vs 6.475e-4, `velfrict_bot` 2.06e-10 vs 2.33e-10;
+- `Ri` relative values close (both up to 1e8 near the bottom);
+- `alphax/alphay` both 0.
+
+So the momentum state is accurate at day 1; the 0.081 K day-8 drift is
+accumulated small differences (velocity 1e-5 -> 1e-2) rather than a missing
+field.  Continue with a day-3 `MOM` probe if the remaining 0.03-0.09 K must be
+reduced further.
