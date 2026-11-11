@@ -864,3 +864,19 @@ block (before/after `dhw` assignment) would be needed.
 
 The v1 code currently keeps the Fortran `dhwtrib=(h10-h1)/10` relaxation
 active, `dhw` before soil, and is otherwise bit-exact at step 1/2.
+
+## M3: actual `dhw` assignment probes (resolved)
+
+Probes inserted **immediately after** `dhw0 = dhwp + dhwe` in case 1:
+
+- step 1: `dhw=dhw0=0`, `dhwfsoil=0`;
+- step 2: `dhw=-0.0002289217`, `dhw0=-5.9735e-7`,
+  `dhwfsoil=-0.0002283244`; `dhw0+dhwfsoil` matches exactly (dhwtrib=0,
+  because h1==h10);
+- step 3: `dhw=-0.0001382717`, `dhw0=-5.9686e-7`,
+  `dhwfsoil=-0.0001605670`; the difference is exactly
+  `(h10-h1)/10 = +2.2892e-5`.
+
+So the earlier `LAKE_entry/LAKE_exit` values were stale; the actual formula is
+`dhw = dhw0 + dhwfsoil + dhwtrib`, with `dhwtrib` active from step 3.  Our
+current `step.py` matches this formula.

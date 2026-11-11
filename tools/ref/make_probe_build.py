@@ -538,6 +538,12 @@ def patch_case1_checkpoints(path):
     lines = path.read_text().splitlines(keepends=True)
     inserts = []
     for i, line in enumerate(lines):
+        if line.strip() == "dhw0 = dhwp + dhwe":
+            tag = f"CK_DHW_{i + 1}"
+            text = "".join(f'  call LM_PROBE("{tag}", "{n}", {n})\n' for n in
+                           ("dhw", "dhw0", "dhwfsoil", "Elatent", "h1"))
+            inserts.append((i + 1, text))
+            continue
         for call in ("call SOILCOLSTEMP", "call SOILFORLAKE"):
             if call not in line:
                 continue
