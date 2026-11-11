@@ -26,7 +26,10 @@ raise ``NotImplementedError``:
 
 * ``Turbpar`` 1/3/4/5/6/7 (only 2 is ported),
 * ``dyn_pgrad`` 1/2/3/4/5/6 (only 0, i.e. zero pressure gradient, is ported),
-* ``cuette=1`` (Couette test case), ``stabfunc`` other than 2/3,
+* ``cuette != 0`` (the Couette case ``cuette=1`` and the constant-flux top
+  row ``cuette=11``/``PBLpar=0``, which needs ``momflux0``; only the
+  case-1 ``cuette=0, PBLpar=3`` branch is ported), ``stabfunc`` other than
+  2/3,
 * vegetation friction ``h_veg > 0`` (a ``STOP`` in LAKE 3.2 as well),
 * ``eos`` other than 5 / ``lindens != 0`` (the density derivatives).
 
@@ -313,9 +316,14 @@ def momentum_solver(state, params, dt, *, Turbpar=2, stabfunc=2, botfric=1,
         raise NotImplementedError(
             "jaxbatch momentum: dyn_pgrad != 0 (seiche / pressure-gradient "
             "force, DENSLAYERS/RELAYER) is not ported")
-    if cuette not in (0, 11):
+    if cuette != 0:
         raise NotImplementedError(
-            f"jaxbatch momentum: cuette={cuette} is not ported (0/11 only)")
+            f"jaxbatch momentum: cuette={cuette} is not ported (only 0; "
+            "the cuette=11 constant-flux top row needs momflux0)")
+    if PBLpar != 3:
+        raise NotImplementedError(
+            f"jaxbatch momentum: PBLpar={PBLpar} is not ported (only 3; "
+            "PBLpar=0 selects the constant-flux top row)")
     if relwind not in (0, 1):
         raise ValueError(f"relwind={relwind}: incorrect meaning (STOP)")
     if stabfunc not in (2, 3):
