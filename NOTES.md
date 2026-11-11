@@ -1174,3 +1174,27 @@ of aborting, and warns.  This keeps long runs finite; it must be replaced by
 the exact linearised balance before the fallback is relied on.  The
 `full425d` run passed freeze-up and melt with the earlier code; the fixed
 `cold425d` run (`scratch/cold425d_v2.log`) restarts with this fallback.
+
+## M4: long 425-day runs — NaN in the snow branch (open)
+
+The first fixed-code 425-day runs (`scratch/*_fixed.npz`) are finite through
+freeze-up but become NaN from day 98 (`shallow425d`) or day 157
+(`full425d`, `warm425d`).  The warnings at the first bad step point at
+`SNOW_COND_HEAT_COEF` / `T_DIFF` divisions by `dens*dz` for an active snow
+layer, followed by `TSURFSOILCOL: h1 <= small_value`; the water column then
+stays NaN.  The old (pre-corrections) full run failed earlier, at day 138.
+
+A run initialised from a valid Fortran probe at day 138 and advanced 24 days
+with the same code stays finite, so a single step is not the cause; the
+long-run state (snow layer bookkeeping / refreeze timing) differs before the
+collapse.  Zero-thickness guards were added to `snow_cond_heat_coef`,
+`diff_coef_snow` and the snow-ice interface, and a diagnostic warning reports
+the first zero active layer.  A full 425-day run with these guards
+(`scratch/full425d_v2.log`) is in progress; it is the test of whether the
+guards are sufficient or the snow-layer bookkeeping itself still needs a fix.
+
+The freeze/thaw timing is also sensitive: in `full425d` the reference melts a
+thin ice layer on days 108-113 and refreezes around day 120; the Python run
+refreezes about 6 days earlier.  This is consistent with the measured chaotic
+sensitivity (1-ULP spread shifts break-up by 5 days), but it changes the snow
+history and makes pointwise long-run comparison meaningless.
