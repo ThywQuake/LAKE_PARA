@@ -209,7 +209,8 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     # Fortran order (dhw before SOILCOLSTEMP)
     dhwp = precip * dt
     dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
-    dhw = dhwp + dhwe + float(ss.soil.dhwfsoil)
+    dhwtrib = (float(np.atleast_1d(params.h10)[l]) - float(st.h1[l])) / 10.0
+    dhw = dhwp + dhwe + float(ss.soil.dhwfsoil) + dhwtrib
     dhw0 = dhwp + dhwe
 
     # soil columns at the current water temperature

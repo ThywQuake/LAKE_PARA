@@ -807,3 +807,16 @@ appear shifted by one relative to `TD_in dhw`), so the next step is a
 **checkpoint probe harness**: record key state after each subroutine in
 `lake.f90` at a single step, and compare our `step_case1` at the same
 checkpoints.  Without that, the step-index bookkeeping dominates the debugging.
+
+## M3: tributary-free dhwtrib relaxation
+
+The reference cases have `tribheat 0`; when no tributary inflow is given the
+Fortran sets `dhwtrib = (h10 - h1)/10` (a relaxation to the initial depth),
+which we had omitted.  Adding it:
+
+- `h1` matches the probe at steps 1, 2, 3 (0.0);
+- step-3 `Tw1` 5.2e-7 (was 3.0e-5);
+- **1-day max error 0.00049 K** (was 0.0052 K).
+
+3.33-day is 0.0148 K in one run; the 20-day rerun will show whether this is a
+transient or a real regression.

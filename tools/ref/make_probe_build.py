@@ -532,6 +532,29 @@ def patch_soilcolstemp(path):
     path.write_text(s)
 
 
+
+
+def patch_case1_checkpoints(path):
+    lines = path.read_text().splitlines(keepends=True)
+    inserts = []
+    for i, line in enumerate(lines):
+        for call in ("call SOILCOLSTEMP", "call SOILFORLAKE"):
+            if call not in line:
+                continue
+            end = i
+            for j in range(i, min(i + 12, len(lines))):
+                if lines[j].rstrip().endswith(')'):
+                    end = j
+                    break
+            tag = f"CK_{call.split()[1]}_{i + 1}"
+            text = "".join(f'  call LM_PROBE("{tag}", "{n}", {n})\n' for n in
+                           ("Tsoil1", "Tsoil2", "Tsoil3", "dhwfsoil", "h1",
+                            "dhw", "dhw0", "Tw1", "Elatent"))
+            inserts.append((end + 1, text))
+    for pos, text in sorted(inserts, reverse=True):
+        lines.insert(pos, text)
+    path.write_text("".join(lines))
+
 def patch_cmake(path):
     text = path.read_text()
     needle = "${path}/lake_modules.f90"
@@ -584,6 +607,7 @@ def main():
     patch_soilforlake_lake(out / "source" / "model" / "lake.f90")
     patch_initvars(out / "source" / "model" / "lake.f90")
     patch_soilcolstemp(out / "source" / "model" / "soil_mod.f90")
+    patch_case1_checkpoints(out / "source" / "model" / "lake.f90")
     print(f"probe source: {out/'source'}")
 
     if args.build:
