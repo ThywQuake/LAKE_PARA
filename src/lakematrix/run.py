@@ -56,6 +56,11 @@ def run_batch(case_dirs, days, meteo_paths=None, callback=None,
                 h_snow=np.array([float(s.hs1[0]) for s in st]),
                 snowmass=np.array([float(s.snowmass[0]) for s in st]),
                 layer_case=np.array([int(s.layer_case[0]) for s in st]),
+                u=np.stack([np.asarray(ss.mom.u1) for ss in models]),
+                v=np.stack([np.asarray(ss.mom.v1) for ss in models]),
+                tke=np.stack([s.E[0] for s in st]),
+                epsilon=np.stack([s.eps[0] for s in st]),
+                t_surface=np.array([float(ss.Tsurf_prev) for ss in models]),
             ))
             if callback is not None:
                 callback(n, models, rec[-1])
@@ -76,6 +81,8 @@ def run_batch(case_dirs, days, meteo_paths=None, callback=None,
         h_snow=_stack("h_snow"),
         snowmass=_stack("snowmass"),
         layer_case=_stack("layer_case"),
+        u=_stack("u"), v=_stack("v"), tke=_stack("tke"),
+        epsilon=_stack("epsilon"), t_surface=_stack("t_surface"),
     )
 
 
@@ -117,6 +124,11 @@ def save_netcdf(path, data, names=None):
         "h_snow": (("lake", "time"), data["h_snow"]),
         "snowmass": (("lake", "time"), data["snowmass"]),
         "layer_case": (("lake", "time"), data["layer_case"]),
+        "u": (("lake", "time", "z"), data["u"]),
+        "v": (("lake", "time", "z"), data["v"]),
+        "tke": (("lake", "time", "z"), data["tke"]),
+        "epsilon": (("lake", "time", "z"), data["epsilon"]),
+        "t_surface": (("lake", "time"), data["t_surface"]),
     }, coords={"lake": np.arange(data["water_temp"].shape[0]),
                "time": data["time"], "z": data["z"],
                "zsoil": np.arange(nzsoil), "soilcol": np.arange(nc),

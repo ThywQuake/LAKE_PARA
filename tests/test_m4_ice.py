@@ -124,3 +124,18 @@ def test_layer_case_selects_ice_at_freezing():
     ss.grid_ddz = grid.ddz
     ss.grid_ddzi = grid.ddzi
     assert layer_case(case, ss, 1, rows) == 2
+
+
+def test_step_any_freezes_surface_water():
+    from lakematrix.forcing import read_ascii
+    from lakematrix.step2 import step_any
+
+    case = read_case(ROOT / "ref" / "v1" / "full425d")
+    grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
+                       case.soil_depth, 0.02)
+    rows = read_ascii(ROOT / "ref" / "v1" / "full425d" / "meteo" / "test.dat")
+    ss = build_step_state(case, grid)
+    ss.state.Tw1[0][0] = -0.3
+    r = step_any(ss, case, grid, rows, 1, nstep0=1)
+    assert ss.state.layer_case[0] == 2
+    assert r["l1"] > 0.0
