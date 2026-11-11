@@ -18,3 +18,19 @@ set (see `docs/reference_cases.md`). M5 has a ~5x single-lake NumPy speed-up
 `(lake, time, depth)` NetCDF output, `run`/`batch` CLI commands and a serial or
 per-process batch driver. `PROGRESS.md` has the measured errors, data locations
 and the resume checklist.
+
+
+## Performance (M5, partial)
+
+`tools/bench.py` measures the current NumPy single-lake driver.  On this VM:
+
+| Driver | lake-steps/s |
+|---|---|
+| `tools/bench.py --lakes 1 --steps 100` | 89 |
+| Fortran check build (full425d, 1 lake) | ~6,600 |
+
+The radiation rewrite (NumPy `cumprod`) removed the dominant JAX-dispatch
+overhead; the remaining cost is the Python tridiagonal/k-epsilon/momentum
+loops.  The vectorised JAX `lax.scan` batch required by plan M5 is **not yet
+implemented**; `run.py` currently advances one lake per process
+(`cli batch --jobs N`).
