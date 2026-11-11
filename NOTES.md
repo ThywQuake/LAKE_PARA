@@ -1114,3 +1114,21 @@ Melt (2 -> 1) uses the same `layer_case` selector: once `l1` reaches zero the
 state is reset to open water before the next case-1 step.  The 2 -> 3 and
 3 -> 1 paths raise `NotImplementedError` for now (case 3 is not covered by the
 stable reference set; see `docs/reference_cases.md`).
+
+## M5/M6: radiation speed-up, batch driver and CLI
+
+`physics/radiation.py` no longer calls JAX inside a Python level loop; the
+Beer-Lambert recurrence is evaluated with NumPy's `cumprod`.  Profiling 100
+case-1 steps: **5.15 s -> 0.99 s**; the one-day `summer1d` CLI run drops from
+119 s to ~42 s.  This is a single-lake speed-up only; the batched JAX
+`lax.scan` runner (plan M5) is still the performance task.
+
+`run.py` adds a correctness-first batch driver: one `StepState` per case,
+advanced in lockstep, stacked to `(lake, time, ...)` arrays and written by
+`save_netcdf`.  The CLI has `lakematrix batch CASE... --days N --out FILE`.
+Two identical lakes give bit-identical output (batch consistency 0), because
+every lake uses the same code path and state layout.  The four 425-day cases
+can be run through this driver, but it is not yet the vectorised version.
+
+Tests added: `rad_update` vs an explicit recurrence, and the single/two-lake
+batch shapes and equality.

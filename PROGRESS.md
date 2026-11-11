@@ -17,8 +17,8 @@ Authoritative plan: `LAKEMATRIX-PLAN.en.md` (English) and
 | M2: bathymetry, radiation, surface fluxes, density, tridiagonal | done |
 | M3: case-1 step (`SOILFORLAKE`, `LATERHEAT`, `T_DIFF`, `T_SOLVER`, `K_EPSILON`, momentum, layers) | **in progress** |
 | M4: ice/snow (cases 2/3) | **in progress**: `physics/ice.py`, `IceSurfaceContext`/`heatbalance_ice`, `step2.py` case-2 no-snow **and snow** steps (one-step probes: `Tw1` 5.5e-7 / 1.5e-6, `Tsoil1` 5.5e-7 / 7.2e-7, `Ti1` 2.3e-5 / 8.7e-6); transitions pending |
-| M5: CPU/JAX batch performance | not started |
-| M6: NetCDF output + CLI | partial: `output.py`, `cli.py`, `tools/compare.py`; no batch lake dimension |
+| M5: CPU/JAX batch performance | **partial**: NumPy radiation `cumprod` gives ~5x single-lake step speed-up; vectorised `lax.scan` batch still pending |
+| M6: NetCDF output + CLI | **partial**: `output.py`, `cli.py` (`run`/`batch`), `tools/compare.py`, `run.py` batch loop with `(lake,time,...)` NetCDF; true vectorised lake dimension pending |
 
 Tests: 37 passed.
 

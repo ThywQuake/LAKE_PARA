@@ -31,7 +31,21 @@ def main(argv=None):
                    help="forcing table (default: <case>/meteo/test.dat)")
     r.add_argument("--days", type=float, default=1.0)
     r.add_argument("--out", default="results.nc")
+
+    b = sub.add_parser("batch", help="run several cases into one (lake, time) file")
+    b.add_argument("cases", nargs="+")
+    b.add_argument("--days", type=float, default=1.0)
+    b.add_argument("--meteo", nargs="*", default=None)
+    b.add_argument("--out", default="results.nc")
     a = p.parse_args(argv)
+
+    if a.cmd == "batch":
+        from .run import run_batch, save_netcdf
+        data = run_batch(a.cases, a.days, meteo_paths=a.meteo)
+        out = save_netcdf(a.out, data, names=a.cases)
+        print(out)
+        return
+
     if a.cmd != "run":
         p.error(f"unknown command {a.cmd}")
 

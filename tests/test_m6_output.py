@@ -20,3 +20,17 @@ def test_output_roundtrip(tmp_path):
     assert ds.water_temp.shape == (2, 3)
     np.testing.assert_allclose(ds.water_temp.values, Tw)
     np.testing.assert_allclose(ds.time.values, [0.0, 1.0])
+
+
+def test_run_batch_single_and_two_lakes():
+    import numpy as np
+    from lakematrix.run import run_batch
+
+    d1 = run_batch([ROOT / "ref/v1/summer1d"], 0.005)
+    assert d1["water_temp"].shape[0] == 1
+    d2 = run_batch([ROOT / "ref/v1/summer1d", ROOT / "ref/v1/summer1d"], 0.005)
+    assert d2["water_temp"].shape[0] == 2
+    np.testing.assert_allclose(d2["water_temp"][0], d1["water_temp"][0],
+                               rtol=0, atol=0)
+    np.testing.assert_allclose(d2["water_temp"][1], d1["water_temp"][0],
+                               rtol=0, atol=0)
