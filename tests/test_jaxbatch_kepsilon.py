@@ -229,4 +229,30 @@ def test_jax_kepsilon_scope_checks(warm_case):
     with pytest.raises(NotImplementedError):
         k_epsilon(floating_ice, dt, dt, 1, KEpsilonParams(M=M))
 
-# UNIQUE-MARKER-12345
+
+
+def test_jax_kepsilon_chained_calls(warm_case):
+    """The returned dict is a valid next input: 3 chained steps == NumPy."""
+    from lakematrix.jaxbatch.kepsilon import k_epsilon
+
+    case, ke = warm_case
+    M, dt = case.M, case.dt
+
+    ref = copy.deepcopy(ke)
+    for _ in range(3):
+        ref = np_k_epsilon(ref, dt, dt_keps=dt, nstep_keps=1,
+                           params=KEpsilonParams(M=M))
+
+    state = _batched(ke, 1)
+    state["init_keps"] = np.ones(1)
+    for _ in range(3):
+        out = k_epsilon(state, dt, dt, 1, KEpsilonParams(M=M))
+        # the kernel echoes every input key -> feed the output straight back
+        state = {k: out[k] for k in KEYS}
+        assert np.all(np.asarray(out["init_keps"]))
+        state["init_keps"] = out["init_keps"]
+
+    for name in ("e1", "eps1", "k2", "kt"):
+        np.testing.assert_allclose(
+            np.asarray(state[name])[0], getattr(ref, name), rtol=0, atol=ATOL,
+            err_msg=f"chained {name}")

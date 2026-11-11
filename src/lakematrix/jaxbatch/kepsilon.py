@@ -46,7 +46,7 @@ key                              shape                meaning
 ``z_half``                         ``(L, M+1)``        level depths (only read by ``zserout``)
 ``ddz``                            ``(L, M+1)``        layer thickness 1:M
 ``ddz2``                           ``(L, M+2)``        ``ddz(i)+ddz(i+1)``; derived if absent
-``ddz054``                         ``(L, M+2)``        ``2*(ddz(i-2)/2+ddz(i-1)+ddz(i)/2)``
+``ddz054``                         ``(L, M+2)``        ``2*(ddz(i-1)/2+ddz(i)+ddz(i+1)/2)``
 ``ddz05``                          ``(L, M+1)``        ``Grid.ddz05`` (Fortran bound 0:M)
 ``dzeta_int``                      ``(L, M+2)``        cumulative depth fraction 1:M+1
 ``dzeta_05int``                    ``(L, M+1)``        half-level depth fraction 1:M
