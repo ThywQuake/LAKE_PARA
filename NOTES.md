@@ -756,3 +756,17 @@ So the momentum state is accurate at day 1; the 0.081 K day-8 drift is
 accumulated small differences (velocity 1e-5 -> 1e-2) rather than a missing
 field.  Continue with a day-3 `MOM` probe if the remaining 0.03-0.09 K must be
 reduced further.
+
+## M3: plan §5 tolerances are much stricter than current errors
+
+The plan requires:
+
+- 1 day (`summer1d`): water temperature and u/v **≤ 1e-6**;
+- 60 days (`summer60d`): profile and surface **≤ 0.01 K**;
+- 425 days: 0.05 K excluding ±1 day around freeze/break-up.
+
+Current: 1 day 0.0135 K, 3.33 days 0.0079 K, 20 days 0.086 K.  These are not
+acceptable under §5.  The gap is in accumulated step-level differences, not in
+any single module (routine probes are 1e-10 or better).  Next must be a
+whole-step probe comparison (`LAKE_entry`/`LAKE_exit`) field by field to find
+the first non-bit-identical quantity, rather than more long runs.
