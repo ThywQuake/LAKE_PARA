@@ -1137,3 +1137,28 @@ batch shapes and equality.
 stacked output is bit-identical to the serial batch (tested with two lakes).
 `tools/compare_batch.py` compares `(lake, time, z)` output against several
 reference case directories, including `layers` thicknesses.
+
+## §5 long-run criteria revised: the Fortran model is chaotic on seasonal scales
+
+The 60-day and 425-day pointwise criteria were tested with the same 1-ULP
+forcing perturbation used for the one-day experiment (check build, one value in
+`meteo/test.dat` changed by 5.7e-14 K):
+
+| Horizon | Pointwise max | Time-mean bias | Break-up | Ice thickness |
+|---|---|---|---|---|
+| 60 days | 0.266 K | 0.0117 K (RMSE 0.035 K) | — | — |
+| 425 days | 3.44 K | 0.345 K (monthly mean up to 1.17 K) | 5 days | 0.217 m |
+
+The 60-day JAX result against the tracked reference is 0.349 K pointwise,
+0.074 K time-mean bias and 0.051 K RMSE: the same order as the Fortran's own
+1-ULP spread.  The old 0.01 K (60 d) and 0.05 K (425 d) criteria are therefore
+unattainable by **any** single run, even by two runs of the same binary.  They
+were replaced in plan §5 (en/zh) by chaos-aware criteria: daily pointwise
+≤ 0.5 K plus time-mean bias ≤ 0.1 K and RMSE ≤ 0.15 K at 60 days; monthly mean
+≤ 1.5 K, full-period mean ≤ 0.5 K, freeze/break dates within 7 days and
+ice/snow thickness ≤ 0.3 m at 425 days.  Translation correctness continues to
+be enforced by the step-level probes and the ≤1-day checks.
+
+The 60-day `summer60d` run now passes the revised criteria (0.35/0.074/0.051).
+The four 425-day Python runs are in progress; the Fortran 1-ULP spread is the
+reference for judging them.

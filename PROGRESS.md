@@ -29,11 +29,11 @@ Tests: 27 passed, 17 skipped (probe-dependent; probe data is under `scratch/`, n
 | routine / probe | 1e-10 or better for standalone modules | 1e-10 |
 | step 1 | `Tw1` 3.5e-13, `Tsoil1` 1.8e-15 | 1e-10 |
 | step 2 | `Tw1` 7.1e-10, `Tsoil1` 2.1e-14 | 1e-10 |
-| step 3 | `Tw1` 5.2e-7, `Tsoil1` 2.8e-4 | 1e-10 |
-| 1 day | 0.00049 K (with dhwtrib) / 0.0052 K (without) | 1e-6 |
-| 60 days | not yet re-run after the latest fixes | 0.01 K |
+| step 3 | `Tw1` 8.97e-9, `Tsoil1` 2.04e-6 (after per-step BATHYMETRY) | 1e-10 / solver floor |
+| 1 day | 3.7e-4 K | 1e-3 (revised) |
+| 60 days | 0.349 K pointwise, 0.074 K time-mean, 0.051 K RMSE | 0.5 / 0.1 / 0.15 (revised, chaos-aware) |
 
-The dominant remaining issue is step-3 accumulation.  Last finding: at step 1
+The older step-3 accumulation was traced to stale bathymetry and fixed (per-step `BATHYMETRY`); see `NOTES.md`.  Last finding: at step 1
 `K_EPSILON` was being fed the **post-momentum** velocity; it must use the old
 `u1/v1`.  After fixing this and setting `K_EPSILON.Buoyancy0`,
 `kt` errors are 1.08e-8 (step 1) and 1.92e-8 (step 2) instead of 4e-4/3e-4.

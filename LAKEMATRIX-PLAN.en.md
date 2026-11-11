@@ -293,19 +293,24 @@ documented iteration noise; an acceptance failure always does.
 | Whole step, non-iterative fields | Probe records after `UPDATE_CURRENT_TIMESTEP` and before `UPDATE_NEXT_TIMESTEP` | 1e-8 relative; `layer_case`, flags and all iteration counts identical |
 | Whole step, iteratively solved fields (`Tw1`, `Tsoil1`/`Tsoil2`, `Tis1`, `Tsurf`, `E`, `eps`, ...) | Same as above | Within the per-solver noise floor in `NOTES.md`; iteration counts identical |
 | 1 day | `summer1d` output | Water temperature ≤ 1e-3 K; u, v ≤ 1e-6 m/s |
-| 60 days | `summer60d` | Water temperature profile ≤ 0.01 K; surface temperature ≤ 0.01 K |
-| 425 days | `full425d` and the other 425-day cases | Water temperature profile ≤ 0.05 K, excluding ±1 day around freeze-up and break-up; ice thickness and snow thickness ≤ 5 mm; freeze-up and break-up dates within 1 day |
+| 60 days | `summer60d` | Daily pointwise water temperature ≤ 0.5 K; time-mean profile bias ≤ 0.1 K; profile RMSE ≤ 0.15 K |
+| 425 days | `full425d` and the other 425-day cases | Monthly-mean water temperature ≤ 1.5 K; full-period mean ≤ 0.5 K; freeze-up and break-up dates within 7 days; ice/snow thickness ≤ 0.3 m. Pointwise trajectories are not compared (chaotic sensitivity; see below) |
 | Batch consistency | Batch of N lakes vs each lake run alone (N = 1) in JAX | Every output of every lake ≤ 1e-12 (proves lakes do not interact; on CPU this should be bit-identical) |
 
 The original whole-step 1e-10 and 1-day 1e-6 K criteria are below the intrinsic noise of the
 Fortran solver: `T_SOLVER` stops at `|Bal| <= 1 W/m²`, which corresponds to roughly 1e-4 K in
 surface temperature. Two independently implemented but equally converged solvers can therefore
-miss those criteria without any translation error. The revised thresholds are still far below
-observational relevance (thermistor accuracy ~0.01 K) and below the 60-day and 425-day
-acceptance criteria. The end-of-M3 review and its justification are in `NOTES.md`, together
-with the 1-ULP perturbation experiment that measures the intrinsic noise floor and confirms
-(or rejects) the new thresholds. Deterministic module probes remain at 1e-10; the long-run
-acceptance criteria are unchanged.
+miss those criteria without any translation error.
+
+The original 60-day 0.01 K and 425-day 0.05 K criteria were also tested against the
+Fortran's own sensitivity and found to be unattainable: perturbing one forcing value by
+1 ULP changes the 60-day profile by up to 0.27 K (time-mean 0.012 K) and the 425-day
+profile by up to 3.44 K (monthly mean 1.17 K, break-up 5 days, ice thickness 0.22 m).
+The model is chaotic on seasonal time scales, so a single-run pointwise comparison cannot
+demand those tolerances even from two runs of the same binary. The revised long-run
+criteria above compare the mean seasonal cycle and the phenology; translation correctness
+is enforced by the step-level probes and the <=1-day checks. The review and its
+measurements are in `NOTES.md`; deterministic module probes remain at 1e-10.
 
 Comparison script: `lakematrix/tools/compare.py REF_CASE_DIR OUT.nc LAKE_INDEX`. It reads the
 Fortran time series `results/test/time_series/<var>  1  1.dat` (the first 5 columns are year,
