@@ -140,7 +140,7 @@ def step_case2_to_solver(ss, params, grid, rows, nstep=1, l=0,
     albedo, albedo_lw, emis = sc["albedo"], sc["albedo_lw"], sc["emissivity"]
 
     row = water_dens_ts(np.r_[0, st.Tw1[l]], np.r_[0, st.Sal1[l]])
-    ml = mixed_layer_calc(row, np.r_[0, grid.ddz], grid.dzeta_05int,
+    ml = mixed_layer_calc(row, grid.ddz, grid.dzeta_05int,
                           float(st.h1[l]), params.M)
 
     Erad = shortwave * (1.0 - albedo)
