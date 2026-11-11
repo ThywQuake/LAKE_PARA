@@ -1087,3 +1087,30 @@ and every `K_EPSILON` call has `KE_in`/`KE_out`.
 
 Case transitions (1 -> 2 freeze-up, 2 -> 1 melt, 2/3 -> 3/1) are the next
 M4 item; `water_freeze_melt` and the layer-case selector still need porting.
+
+## M4: case transitions (freeze-up validated)
+
+`step2.py` now has `water_freeze_melt`, `layer_case`, `create_initial_ice`,
+`step_any` (case selection plus 1->2 and 2->1 transitions) and `run_model`.
+
+The freeze-up path was validated from the probe state at `full425d` step
+460619 (`LAKE_exit` + `SOILF_out` + momentum), running steps 460620 and
+460621:
+
+| Field | step 460620 | step 460621 |
+|---|---|---|
+| `Tw1` | 2.2e-8 | 4.0e-8 |
+| `Tsoil1` | 8.8e-7 | 9.4e-7 |
+| `Ti1` | 7.7e-5 | 1.2e-4 |
+| `h1` | 3.0e-8 m | 5.8e-8 m |
+| `l1` | 1.4e-6 m | 2.9e-6 m |
+
+The decisive detail was `dhwtrib`: with no tributaries the Fortran still
+applies the depth relaxation `(h10 - h1)/10` inside case 2 (the `BATHYMETRY`
+fallback).  `sync_ice` now sets it from the current `h1`; without it the
+freeze-up step had an `h1` error of 9.3e-5 m.
+
+Melt (2 -> 1) uses the same `layer_case` selector: once `l1` reaches zero the
+state is reset to open water before the next case-1 step.  The 2 -> 3 and
+3 -> 1 paths raise `NotImplementedError` for now (case 3 is not covered by the
+stable reference set; see `docs/reference_cases.md`).

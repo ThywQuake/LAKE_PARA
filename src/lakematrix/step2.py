@@ -18,8 +18,8 @@ from .physics.ice import (ice_increments, ice_increments_nosnow,
                           snow_cond_heat_coef, sr_botsnow, t_diff_ice)
 from .physics.radiation import FRACBANDS, rad_update
 from .physics.salinity import s_diff
-from .physics.soil import (laterheat, soil_cond_heat_coef, soilcolstemp,
-                           soilforlake)
+from .physics.soil import (laterheat, meltpnt, soil_cond_heat_coef,
+                           soilcolstemp, soilforlake, water_freeze_melt)
 from .physics.surface import (IceSurfaceContext, heatbalance_ice,
                               heatbalance_water, radbalance, surf_char)
 from .physics.turb import diffmin_hs, mixed_layer_calc, turb_scales
@@ -72,7 +72,7 @@ def sync_ice(ss, params, grid, st, l=0):
     ice.dls = 0.0
     ice.dls0 = 0.0
     ice.dhwfsoil = float(ss.soil.dhwfsoil)
-    ice.dhwtrib = 0.0
+    ice.dhwtrib = (float(np.atleast_1d(params.h10)[l]) - ice.h1) / 10.0
     ice.PEMF = np.zeros(params.M + 2)
     ice.pt_down_f = np.zeros(params.M + 2)
     ice.Tsoil1 = ss.soil.Tsoil1
@@ -324,7 +324,8 @@ def step_case2(ss, params, grid, rows, nstep=1, l=0, init_step=False):
                 Elatent=float(r["state"]["Elatent"]),
                 dhwfsoil=float(ss.soil.dhwfsoil), dhw=ice.dhw,
                 dhw0=ice.dhw0, Tsurf3=r["Tsurf3"], Bal3=r["Bal3"],
-                iter=r["iter"], ice=ice)
+                iter=r["iter"], ice=ice, flag_snow=int(ice.flag_snow),
+                itop=int(ice.itop))
 
 
 def run_case2(params, grid, rows, nsteps=180, l=0, callback=None,
@@ -368,3 +369,140 @@ def build_case2_state(params, grid):
     ss.Tsurf_prev = -999.0
     ss.surftyp_prev = 0
     return ss
+
+
+# ---------------------------------------------------------------------------
+# Layer-case selection and transitions (lake.f90:881-912, 1246-1281)
+# ---------------------------------------------------------------------------
+
+def layer_case(params, ss, nstep, rows, l=0):
+    """Return the Fortran ``layer_case`` for the current state and forcing."""
+    from .forcing import at_time
+    st = ss.state
+    h1 = float(st.h1[l])
+    l1 = float(st.l1[l])
+    Tw1 = np.asarray(st.Tw1[l])
+    Ti1 = np.asarray(st.Ti1[l])
+    Sal1 = np.asarray(st.Sal1[l])
+    pres = np.asarray(ss.bathym.preswat[l])
+    nmp = int(np.atleast_1d(params.nmeltpoint)[0])
+    lc = 1
+    if h1 > 0.0 and l1 > 0.0:
+        lc = 2
+    elif h1 == 0.0 and l1 > 0.0:
+        lc = 3
+    elif h1 == 0.0 and l1 == 0.0:
+        lc = 4
+    if lc == 1:
+        mp = meltpnt(float(Sal1[0]), float(pres[0]), nmp)
+        if (water_freeze_melt(float(Tw1[0]), 0.5 * float(ss.grid_ddz[0]) * h1,
+                              mp, 1)
+                and h1 - C.min_ice_thick * C.roi_d_row0 > C.min_water_thick):
+            lc = 2
+    elif lc == 3:
+        mp = meltpnt(0.0, 0.0, nmp)
+        if (water_freeze_melt(float(Ti1[-1]), 0.5 * float(ss.grid_ddzi[-1]) * l1,
+                              mp, -1)
+                and l1 - C.min_water_thick * C.row0_d_roi > C.min_ice_thick):
+            lc = 2
+    return lc
+
+
+def create_initial_ice(params, ss, nstep, rows, l=0):
+    """Case 2's initial thin ice layer (lake.f90:1246-1263)."""
+    from .forcing import at_time
+    st = ss.state
+    nmp = int(np.atleast_1d(params.nmeltpoint)[0])
+    f = at_time(rows, nstep * params.dt,
+                interval=float(np.atleast_1d(params.interval)[0]))
+    tempair = float(f[0]) - C.Kelvin0
+    st.l1[l] = C.min_ice_thick
+    st.h1[l] = float(st.h1[l]) - C.min_ice_thick * C.roi_d_row0
+    x = meltpnt(float(st.Sal1[l][0]), 0.0, nmp)
+    Mice = params.Mice
+    if tempair < 0.0:
+        st.Ti1[l] = tempair + (np.arange(Mice + 1) / float(Mice)) * (x - tempair)
+    else:
+        st.Ti1[l] = x - C.T_phase_threshold
+    st.Tis1[l] = 0.0
+    st.ls1[l] = 0.0
+    st.hs1[l] = 0.0
+    st.snowmass[l] = 0.0
+    st.flag_snow[l] = 0
+    st.itop[l] = 0
+    ss.ice = None
+    ss.surftyp_prev = 0
+    ss.Tsurf_prev = -999.0
+
+
+def step_any(ss, params, grid, rows, nstep, l=0, nstep0=1):
+    """One step with the Fortran case selection and 1->2 / 2->1 transitions."""
+    from .step import step_case1
+
+    st = ss.state
+    ss.grid_ddz = grid.ddz
+    ss.grid_ddzi = grid.ddzi
+    lc = layer_case(params, ss, nstep, rows, l)
+    if lc == 1 and float(st.l1[l]) > 0.0:
+        # melt-out: drop the ice/snow state before the open-water step
+        st.l1[l] = 0.0
+        st.ls1[l] = 0.0
+        st.hs1[l] = 0.0
+        st.snowmass[l] = 0.0
+        st.flag_snow[l] = 0
+        st.Ti1[l] = 0.0
+        st.Tis1[l] = 0.0
+        ss.ice = None
+        ss.surftyp_prev = 0
+        ss.Tsurf_prev = -999.0
+    if lc == 2 and float(st.l1[l]) == 0.0:
+        create_initial_ice(params, ss, nstep, rows, l)
+    if lc == 1:
+        r = step_case1(ss, params, grid, rows, nstep, l,
+                       init_step=(nstep == nstep0 and float(st.l1[l]) == 0.0))
+        st.Tw1[l] = r["Tw1"]; st.Sal1[l] = r["Sal1"]
+        st.Tsoil1[l] = r["Tsoil1"]; st.h1[l] = r["h1"]
+        st.E[l] = r["E1"]; st.eps[l] = r["eps1"]; st.lamw[l] = r["lamw"]
+        st.l1[l] = 0.0; st.ls1[l] = 0.0; st.hs1[l] = 0.0
+        st.snowmass[l] = 0.0; st.flag_snow[l] = 0
+        ss.Elatent = r["Elatent"]
+        ss.soil.dhwfsoil = r["dhwfsoil"]
+        st.layer_case[l] = 1
+    elif lc == 2:
+        r = step_case2(ss, params, grid, rows, nstep, l)
+        st.Tw1[l] = r["Tw1"]; st.Sal1[l] = r["Sal1"]
+        st.Tsoil1[l] = r["Tsoil1"]; st.Ti1[l] = r["Ti1"]; st.Tis1[l] = r["Tis1"]
+        st.h1[l] = r["h1"]; st.l1[l] = r["l1"]; st.ls1[l] = r["ls1"]
+        st.hs1[l] = r["hs1"]; st.snowmass[l] = r["snowmass"]
+        st.flag_snow[l] = r["flag_snow"]; st.itop[l] = r["itop"]
+        st.E[l] = r["E1"]; st.eps[l] = r["eps1"]; st.lamw[l] = r["lamw"]
+        ss.Elatent = r["Elatent"]; ss.soil.dhwfsoil = r["dhwfsoil"]
+        st.layer_case[l] = 2
+        if st.l1[l] <= 0.0:
+            st.l1[l] = 0.0; st.ls1[l] = 0.0; st.hs1[l] = 0.0
+            st.snowmass[l] = 0.0; st.flag_snow[l] = 0
+            st.Ti1[l] = 0.0; st.Tis1[l] = 0.0
+            ss.ice = None
+        if st.h1[l] <= 0.0:
+            st.h1[l] = 0.0
+            st.layer_case[l] = 3
+    else:
+        raise NotImplementedError(f"layer_case {lc} is not ported (M4)")
+    st.time[l] += params.dt
+    st.nstep[l] = nstep
+    return r
+
+
+def run_model(params, grid, rows, nsteps=180, l=0, callback=None, store=True,
+              nstep0=1):
+    """Run with case selection/transitions (case 1 and case 2 for now)."""
+    from .step import build_step_state
+    ss = build_step_state(params, grid)
+    out = []
+    for n in range(nstep0, nstep0 + nsteps):
+        r = step_any(ss, params, grid, rows, n, l, nstep0=nstep0)
+        if store:
+            out.append(r)
+        if callback is not None:
+            callback(n, ss, r)
+    return ss, out

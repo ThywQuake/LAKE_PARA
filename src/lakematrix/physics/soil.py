@@ -1689,3 +1689,21 @@ def soilcolstemp(state: SoilState, params: SoilParams, dt, contr=(1, 0)):
             "ported; it requires METHANE from methane_mod.f90")
 
     return state
+
+
+def water_freeze_melt(temperature, grid_size, melting_point, switch):
+    """``WATER_FREEZE_MELT`` (phys_func.f90:859-910).
+
+    ``switch=+1`` checks water -> ice (heat deficit exceeds the latent heat of
+    ``min_ice_thick``, or the water is more than 0.2 K below freezing);
+    ``switch=-1`` checks ice -> water.
+    """
+    if switch == 1:
+        d = melting_point - C.T_phase_threshold - temperature
+        return (d * C.cw_m_row0 * grid_size > C.min_ice_thick * C.roi_m_Lwi
+                or d > 0.2)
+    if switch == -1:
+        d = temperature - C.T_phase_threshold - melting_point
+        return (d * C.ci_m_roi * grid_size > C.min_water_thick * C.row0_m_Lwi
+                or d > 0.2)
+    raise ValueError(f"WATER_FREEZE_MELT: bad switch {switch!r}")
