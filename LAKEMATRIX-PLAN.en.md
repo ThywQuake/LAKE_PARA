@@ -281,18 +281,31 @@ Purpose: compare each JAX routine with Fortran on its own, without waiting for t
 
 ## 5. Acceptance criteria (tolerances)
 
+Two classes of criteria are used. **Diagnostic** criteria are tight and exist to localize
+translation errors. **Acceptance** criteria are the physically meaningful agreement with the
+Fortran reference. A diagnostic failure does not by itself fail a milestone when the cause is
+documented iteration noise; an acceptance failure always does.
+
 | Level | Compared | Criterion |
 |---|---|---|
-| Routine | Probe records before/after, one step | For each output array: `max|a-b| <= 1e-10 * max(1, max|b|)`. With the same formulas in the same order this should be close to bit-identical |
-| Whole step | Probe records after `UPDATE_CURRENT_TIMESTEP` and before `UPDATE_NEXT_TIMESTEP` | Same as above, 1e-10 |
-| 1 day | `summer1d` output | Water temperature ≤ 1e-6 K; u, v ≤ 1e-6 m/s |
+| Routine, deterministic | Probe records before/after, one step | For each output array: `max|a-b| <= 1e-10 * max(1, max|b|)`. With the same formulas in the same order this should be close to bit-identical |
+| Routine, iterative (`T_SOLVER`, `K_EPSILON`, momentum, ...) | Probe records before/after, one step | Iteration count and converged residual must match; outputs within the solver's noise floor recorded in `NOTES.md` (currently `T_SOLVER`: 1e-3 K for temperature) |
+| Whole step, non-iterative fields | Probe records after `UPDATE_CURRENT_TIMESTEP` and before `UPDATE_NEXT_TIMESTEP` | 1e-8 relative; `layer_case`, flags and all iteration counts identical |
+| Whole step, iteratively solved fields (`Tw1`, `Tsoil1`/`Tsoil2`, `Tis1`, `Tsurf`, `E`, `eps`, ...) | Same as above | Within the per-solver noise floor in `NOTES.md`; iteration counts identical |
+| 1 day | `summer1d` output | Water temperature ≤ 1e-3 K; u, v ≤ 1e-6 m/s |
 | 60 days | `summer60d` | Water temperature profile ≤ 0.01 K; surface temperature ≤ 0.01 K |
 | 425 days | `full425d` and the other 425-day cases | Water temperature profile ≤ 0.05 K, excluding ±1 day around freeze-up and break-up; ice thickness and snow thickness ≤ 5 mm; freeze-up and break-up dates within 1 day |
 | Batch consistency | Batch of N lakes vs each lake run alone (N = 1) in JAX | Every output of every lake ≤ 1e-12 (proves lakes do not interact; on CPU this should be bit-identical) |
 
-Review the long-run criteria once at the end of M3, using the measured errors. Any loosening
-must be justified in `NOTES.md` (for example, differences caused by iteration convergence
-tests).
+The original whole-step 1e-10 and 1-day 1e-6 K criteria are below the intrinsic noise of the
+Fortran solver: `T_SOLVER` stops at `|Bal| <= 1 W/m²`, which corresponds to roughly 1e-4 K in
+surface temperature. Two independently implemented but equally converged solvers can therefore
+miss those criteria without any translation error. The revised thresholds are still far below
+observational relevance (thermistor accuracy ~0.01 K) and below the 60-day and 425-day
+acceptance criteria. The end-of-M3 review and its justification are in `NOTES.md`, together
+with the 1-ULP perturbation experiment that measures the intrinsic noise floor and confirms
+(or rejects) the new thresholds. Deterministic module probes remain at 1e-10; the long-run
+acceptance criteria are unchanged.
 
 Comparison script: `lakematrix/tools/compare.py REF_CASE_DIR OUT.nc LAKE_INDEX`. It reads the
 Fortran time series `results/test/time_series/<var>  1  1.dat` (the first 5 columns are year,

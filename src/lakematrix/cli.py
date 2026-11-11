@@ -11,7 +11,15 @@ from .output import save_profiles
 from .setup_io import read_case
 from .step import run_case1
 
-DEFAULT_METEO = "/Users/mac/文档/研究生/LAKE/LAKE3.2/meteo/testlake.dat"
+
+def _default_meteo(case_dir):
+    """Forcing table shipped with a reference case, if there is one."""
+    for rel in ("meteo/test.dat", "meteo/testlake.dat"):
+        p = Path(case_dir) / rel
+        if p.exists():
+            return p
+    raise SystemExit(
+        f"{case_dir}: no meteo/test.dat; pass --meteo PATH explicitly")
 
 
 def main(argv=None):
@@ -19,7 +27,8 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="run one case")
     r.add_argument("case")
-    r.add_argument("--meteo", default=DEFAULT_METEO)
+    r.add_argument("--meteo", default=None,
+                   help="forcing table (default: <case>/meteo/test.dat)")
     r.add_argument("--days", type=float, default=1.0)
     r.add_argument("--out", default="results.nc")
     a = p.parse_args(argv)
@@ -29,7 +38,8 @@ def main(argv=None):
     case = read_case(a.case)
     grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
                        case.soil_depth, 0.02)
-    rows = read_ascii(a.meteo)
+    meteo = Path(a.meteo) if a.meteo else _default_meteo(a.case)
+    rows = read_ascii(meteo)
     nsteps = int(round(a.days * 86400.0 / case.dt))
     every = max(1, int(round(86400.0 / case.dt)))
     times, water, soil, h1 = [], [], [], []

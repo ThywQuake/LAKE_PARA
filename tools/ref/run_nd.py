@@ -13,10 +13,11 @@ from lakematrix.setup_io import read_case  # noqa: E402
 from lakematrix.step import run_case1  # noqa: E402
 
 ndays = int(sys.argv[1]) if len(sys.argv) > 1 else 10
-case = read_case(ROOT / "ref" / "v1" / "summer60d")
+case_dir = ROOT / "ref" / "v1" / "summer60d"
+case = read_case(case_dir)
 grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
                    case.soil_depth, 0.02)
-rows = read_ascii("/Users/mac/文档/研究生/LAKE/LAKE3.2/meteo/testlake.dat")
+rows = read_ascii(case_dir / "meteo" / "test.dat")
 profiles = []
 
 
@@ -27,6 +28,7 @@ def cb(n, ss, r):
         print("day", n // 4320, flush=True)
 
 ss, _ = run_case1(case, grid, rows, ndays * 4320, callback=cb, store=False)
+(ROOT / "scratch").mkdir(exist_ok=True)
 np.savez(ROOT / "scratch" / f"m3_{ndays}d.npz",
          n=np.array([p["n"] for p in profiles]),
          Tw1=np.array([p["Tw1"] for p in profiles]),
