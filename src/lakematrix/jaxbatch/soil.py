@@ -1,5 +1,6 @@
 """JAX (batched) soil column helpers used by case 1."""
 
+import numpy as np
 import jax.numpy as jnp
 
 from ..constants import C
@@ -31,7 +32,7 @@ def soil_cond_heat_coef(wl1, wi1, POR, rosdry, dzs, BH, DLMAX, FLWMAX,
     ``(L, ns+1)`` (index 0 is the Fortran pad).  ``is_`` is a Python int.
     """
     L = wl1.shape[0]
-    cr = float(jnp.float32(0.2)) * 4180.0
+    cr = float(np.float32(0.2)) * 4180.0
     cimh = C.ci
     wl = wl1[:, :, is_]
     wi = wi1[:, :, is_]
