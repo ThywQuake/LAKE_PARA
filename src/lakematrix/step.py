@@ -50,6 +50,8 @@ class StepState:
     cdmw: float = 1.0e-15
     ke_trace: list = field(default_factory=list)
     trace_ke: bool = False
+    ck_soilcol: dict = field(default_factory=dict)
+    ck_soilf: dict = field(default_factory=dict)
 
 
 def _zsoil_geom(params, grid, l, st, bathym):
@@ -209,8 +211,8 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     # Fortran order (dhw before SOILCOLSTEMP)
     dhwp = precip * dt
     dhwe = -ss.Elatent / (C.Lwv * C.row0) * dt
-    # v1 has no tributaries: the Fortran `dhwtrib` branch is inactive.
-    dhwtrib = 0.0
+    # no tributary inflow: Fortran's fallback depth relaxation
+    dhwtrib = (float(np.atleast_1d(params.h10)[l]) - float(st.h1[l])) / 10.0
     dhw = dhwp + dhwe + float(ss.soil.dhwfsoil) + dhwtrib
     dhw0 = dhwp + dhwe
 
@@ -223,6 +225,11 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     soil_cond_heat_coef(ss.soil, ss.soil_params, is_=params.nsoilcols)
     ss.soil = soilcolstemp(ss.soil, ss.soil_params, dt)
     lsh = laterheat(ss.soil, ss.soil_params, ss.soil.soilflux, onlywater=True)
+    ss.ck_soilcol = dict(Tsoil1=ss.soil.Tsoil1.copy(),
+                         Tsoil2=ss.soil.Tsoil2.copy(),
+                         dhwfsoil=float(ss.soil.dhwfsoil),
+                         h1=float(st.h1[l]), dhw=float(dhw),
+                         dhw0=float(dhw0), Elatent=float(ss.Elatent))
 
     # momentum
     ss.mom_params.uwind = float(uwind)
@@ -302,6 +309,12 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     # deepest soil column
     ss.soil.Tsoil2 = Tsoil2
     ss.soil = soilforlake(ss.soil, ss.soil_params, dt, is_=nc)
+    ss.ck_soilf = dict(Tsoil1=ss.soil.Tsoil1.copy(),
+                       Tsoil2=ss.soil.Tsoil2.copy(),
+                       dhwfsoil=float(ss.soil.dhwfsoil),
+                       h1=float(ss.h1 if hasattr(ss, "h1") else st.h1[l]),
+                       dhw=float(r["dhw"]), dhw0=float(r["dhw0"]),
+                       Elatent=float(r["state"]["Elatent"]))
 
     # salinity (fresh water)
     Sal1 = np.r_[0, st.Sal1[l]]

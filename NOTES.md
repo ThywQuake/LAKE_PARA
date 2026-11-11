@@ -832,3 +832,17 @@ is set to 0 again.
 The correct step-3 `h1` then needs a different explanation; the h1 match with
 relaxation was likely accidental.  Keep the other exactness fixes (zsoil,
 dhw order, surface velocity).
+
+## M3: dhwtrib is in the Fortran `dhw`; dhwfsoil carry ambiguity
+
+Step-3 checkpoint: `dhw=-0.000138272` and `dhw0=-5.9686e-7` in the probe.
+Our `dhw0+dhwfsoil` gives `-0.00016116`; the missing `+2.289e-5` is exactly
+`(h10-h1)/10` at step 3.  So the relaxation *is* active in the reference run,
+even with `tribheat 0`.
+
+Re-enabling it makes step-3 `h1` exact, but the 3.33-day error grows from
+0.0066 to 0.0148 K (and the 20-day run was 0.183 K).  The remaining ambiguity
+is the `dhwfsoil` carried between the **methane SOILCOLSTEMP** call and
+`UPDATE_NEXT_TIMESTEP`: the probe's step-3 `dhw` implies a different carried
+value than the step-2 checkpoint.  This must be resolved with per-call probes
+rather than guessed.
