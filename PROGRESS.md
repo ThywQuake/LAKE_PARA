@@ -31,7 +31,7 @@ Tests: 27 passed, 17 skipped (probe-dependent; probe data is under `scratch/`, n
 | step 2 | `Tw1` 7.1e-10, `Tsoil1` 2.1e-14 | 1e-10 |
 | step 3 | `Tw1` 8.97e-9, `Tsoil1` 2.04e-6 (after per-step BATHYMETRY) | 1e-10 / solver floor |
 | 1 day | 3.7e-4 K | 1e-3 (revised) |
-| 60 days | 0.349 K pointwise, 0.054 K time-mean, 0.071 K RMSE — **PASS** | 0.5 / 0.1 / 0.15 (revised, chaos-aware) |
+| 60 days | 0.263 K pointwise, 0.049 K time-mean, 0.058 K RMSE — **PASS** | 0.5 / 0.1 / 0.15 (revised, chaos-aware) |
 
 The older step-3 accumulation was traced to stale bathymetry and fixed (per-step `BATHYMETRY`); see `NOTES.md`.  Last finding: at step 1
 `K_EPSILON` was being fed the **post-momentum** velocity; it must use the old
