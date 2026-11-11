@@ -43,3 +43,21 @@ Benchmark (one T_DIFF call, CPU):
 The next B2 step is the surface heat balance (`SURF_CHAR`/`SENSLATMOM_FLUXES`
 /`RADBALANCE`/`HEATBALANCE`) and the batched `T_SOLVER`; then soil columns,
 momentum and K_EPSILON.
+
+## B2 delivered (2026-11-11)
+
+`src/lakematrix/jaxbatch/sfcflx.py` (open-water SfcFlx) and
+`src/lakematrix/jaxbatch/surface.py` (SURF_CHAR/HEATFLUXSURF/RADBALANCE/
+HEATBALANCE) reproduce the NumPy values to ~1e-8 or better.
+`src/lakematrix/jaxbatch/tsolver.py` implements the batched scan + Chorde
+iteration.  One `T_SOLVER` call on the step-1 state:
+
+| Lakes | JAX | NumPy per-lake loop | Speedup |
+|---|---|---|---|
+| 1 | 0.69 ms | 6.43 ms | 9.3x |
+| 8 | 1.47 ms | 51.4 ms | 34.9x |
+| 64 | 7.22 ms | 415 ms | 57.5x |
+
+`Tsurf3`, `Tw2` and `Tsoil2` match the NumPy solver to 1e-10.
+The next B3 is the soil-column preprocessing (`SOIL_COND_HEAT_COEF`,
+`SOILCOLSTEMP`, `LATERHEAT`) and postprocessing (`SOILFORLAKE`).

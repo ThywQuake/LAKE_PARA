@@ -46,6 +46,9 @@ def diff_coef_water(a, b, c, d, n0, n1, m0, m1, dt, Tw1, lamw, area_int,
     dt_inv = 1.0 / dt
     dt_inv05 = 0.5 * dt_inv
     cw = C.cw_m_row0
+    h1 = jnp.atleast_1d(h1)
+    dhw = jnp.atleast_1d(dhw)
+    dhw0 = jnp.atleast_1d(dhw0)
     i = jnp.arange(m0, m1 + 1)
     j = i - m0 + n0
     aa = 0.5 * (-area_half[..., j - 1] * lamw[..., j - 1]
@@ -77,6 +80,10 @@ def t_diff_water(Tsurf, dt, Tw1, Tsoil1, lamw, area_int, area_half, h1, ddz,
                  rad_integr, dzeta_int, ddz05, M, ns, isoilcol,
                  soilbotflx=0.0, lsh_water=None):
     """Batched case-1 ``T_DIFF``; all arrays have a leading lake axis (1-based)."""
+    Tsurf = jnp.atleast_1d(Tsurf)
+    h1 = jnp.atleast_1d(h1)
+    dhw = jnp.atleast_1d(dhw)
+    dhw0 = jnp.atleast_1d(dhw0)
     L = Tsurf.shape[0]
     nn = M + ns
     a = jnp.zeros((L, nn + 1))
