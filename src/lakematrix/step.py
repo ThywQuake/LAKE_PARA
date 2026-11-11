@@ -48,6 +48,8 @@ class StepState:
     Tsurf_prev: float = -999.0
     surftyp_prev: int = 0
     cdmw: float = 1.0e-15
+    mom_u1_old: np.ndarray = None
+    mom_v1_old: np.ndarray = None
     ke_trace: list = field(default_factory=list)
     trace_ke: bool = False
     ck_soilcol: dict = field(default_factory=dict)
@@ -257,6 +259,8 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ss.mom.h1 = float(st.h1[l])
     ss.mom.dhw = dhw
     ss.mom.dhw0 = dhw0
+    ss.mom_u1_old = np.array(ss.mom.u1, copy=True)
+    ss.mom_v1_old = np.array(ss.mom.v1, copy=True)
     mom_res = momentum_solver(ss.mom, ss.mom_params, dt)
     ss.mom = mom_res.state
     ss.mom.u1 = np.array(mom_res.u2, copy=True)
@@ -337,8 +341,8 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ke = ss.ke
     ke.e1 = np.r_[0, st.E[l]]
     ke.eps1 = np.r_[0, st.eps[l]]
-    ke.u1 = np.r_[0, ss.mom.u1]
-    ke.v1 = np.r_[0, ss.mom.v1]
+    ke.u1 = np.r_[0, ss.mom_u1_old]
+    ke.v1 = np.r_[0, ss.mom_v1_old]
     ke.um = np.zeros(M + 2)
     ke.vm = np.zeros(M + 2)
     ke.u2 = np.r_[0, r["mom"].u2]
@@ -355,6 +359,9 @@ def step_case1(ss, params, grid, rows, nstep=1, l=0, init_step=False):
     ke.vol = float(ss.bathym.vol[l])
     ke.botar = float(ss.bathym.botar[l])
     ke.b0 = 0.0
+    ke.Buoyancy0 = (C.g / C.row0
+                    * float(ddens_dtemp(st.Tw1[l][0], 0.0))
+                    * float(r["state"]["eflux0_kinem"]))
     ke.tau_air = float(r["mom"].tau_air)
     ke.tau_wav = float(r["mom"].tau_wav)
     ke.tau_i = float(r["mom"].tau_i or 0.0) if getattr(r["mom"], "tau_i", None) is not None else 0.0
