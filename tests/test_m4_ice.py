@@ -96,3 +96,31 @@ def test_case2_one_step_smoke():
     for key in ("Tw1", "Tsoil1", "Ti1", "lamw"):
         assert np.all(np.isfinite(r[key]))
     assert r["l1"] > 0.0
+
+
+def test_water_freeze_melt_switch():
+    from lakematrix.physics.soil import water_freeze_melt
+    from lakematrix.constants import C
+
+    # 1 mK below freezing in a 1 m cell cannot freeze (latent heat too large)
+    assert not water_freeze_melt(-0.001, 1.0, 0.0, 1)
+    # 0.3 K below freezing triggers the "> 0.2 K" branch
+    assert water_freeze_melt(-0.3, 1.0, 0.0, 1)
+    # symmetric ice -> water check
+    assert not water_freeze_melt(0.001, 1.0, 0.0, -1)
+    assert water_freeze_melt(0.3, 1.0, 0.0, -1)
+
+
+def test_layer_case_selects_ice_at_freezing():
+    from lakematrix.forcing import read_ascii
+    from lakematrix.step2 import layer_case
+
+    case = read_case(ROOT / "ref" / "v1" / "full425d")
+    grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
+                       case.soil_depth, 0.02)
+    rows = read_ascii(ROOT / "ref" / "v1" / "full425d" / "meteo" / "test.dat")
+    ss = build_step_state(case, grid)
+    ss.state.Tw1[0][0] = -0.3
+    ss.grid_ddz = grid.ddz
+    ss.grid_ddzi = grid.ddzi
+    assert layer_case(case, ss, 1, rows) == 2
