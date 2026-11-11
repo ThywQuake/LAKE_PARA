@@ -40,6 +40,8 @@ key                            shape               meaning
                                                    ``is_`` (see note below)
 ``h1``                         ``(L,)``            water depth, m
 ``wa``, ``methgenmh``          ``(L, ns+1)``       optional diagnostics
+``wl3``                        ``(L, ns+1)``       optional incoming work array
+                                                   (only its pad is kept)
 ``dhwfsoil``                   ``(L,)``            optional diagnostic
 =============================  ==================  ===========================
 
@@ -66,7 +68,8 @@ deepest column, which is the only supported configuration).
 Returns a new dict: a copy of ``state`` with ``Tsoil1``/``wl1``/``wi1``
 updated in column ``is_``, plus ``Tsoil2`` (the iteration work value, as the
 in-place reference leaves it), ``Tsoil3``, ``wl4``, ``wi2``, ``wa``,
-``methgenmh`` and ``dhwfsoil``.  The input dict and its arrays are not mutated.
+``methgenmh``, ``dhwfsoil`` and the work arrays ``wl2``/``wl3``.  The input
+``dict`` and its arrays are not mutated.
 
 Notes / deviations
 ==================
@@ -87,6 +90,10 @@ Notes / deviations
 * Float32 Fortran literals are reused from the NumPy module
   (``S._S001``, ``S._MELTPNT_DTDC``); the under-relaxation weights are computed
   on the host with ``math.cos`` so they are bit-identical to the reference.
+* Level 0 (the 1-based pad) is never written by the reference and is not
+  written here either: ``Tsoil1``/``wl1``/``wi1``/``Tsoil2``/``Tsoil3``/
+  ``wl3``/``wl4``/``wi2``/``wa``/``methgenmh`` keep their incoming pad value.
+  ``wl2`` is zero at level 0, exactly as ``_progonka_1based`` returns it.
 """
 
 from __future__ import annotations
@@ -442,8 +449,10 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
     wi2_is = keep_pad(wi2_is, wi2[:, :, is_])
     Tsoil3_is = keep_pad(Tsoil3_is, Tsoil3[:, :, is_])
 
-    # Negative ice content: return it to liquid water (mhsep = 1).
-    neg = wi2_is < 0.0
+    # Negative ice content: return it to liquid water (mhsep = 1).  The
+    # reference loops over levels 1..ns only, so the pad is left alone.
+    levels = jnp.arange(wi2_is.shape[1]) > 0
+    neg = (wi2_is < 0.0) & levels
     wl4_is = jnp.where(neg, wl4_is + wi2_is, wl4_is)
     wi2_is = jnp.where(neg, 0.0, wi2_is)
 
@@ -459,9 +468,13 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
     dhwfsoil = dhwfsoil1 + dhwfsoil2 + dhwfsoil3 + dhwfsoil4
 
     # --- Prognostic updates (soil_mod.f90:691-703) -------------------------
-    Tsoil1 = Tsoil1.at[:, :, is_].set(Tsoil3_is)
-    wl1 = wl1.at[:, :, is_].set(wl4_is)
-    wi1 = wi1.at[:, :, is_].set(wi2_is)
+    # The reference writes levels 1..ns only, so each prognostic array keeps
+    # its own incoming pad (level 0) rather than inheriting it from Tsoil3/
+    # wl4/wi2.
+    Tsoil1 = Tsoil1.at[:, :, is_].set(
+        keep_pad(Tsoil3_is, Tsoil1[:, :, is_]))
+    wl1 = wl1.at[:, :, is_].set(keep_pad(wl4_is, wl1[:, :, is_]))
+    wi1 = wi1.at[:, :, is_].set(keep_pad(wi2_is, wi1[:, :, is_]))
     Tsoil3 = Tsoil3.at[:, :, is_].set(Tsoil3_is)
     wl4 = wl4.at[:, :, is_].set(wl4_is)
     wi2 = wi2.at[:, :, is_].set(wi2_is)

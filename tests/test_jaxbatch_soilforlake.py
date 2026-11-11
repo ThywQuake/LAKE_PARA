@@ -6,7 +6,8 @@ The batch kernel is exercised on the deepest soil column of the real
 the second call produces the reference from the pristine state).  A second,
 synthetic cold/icy snapshot uses the same soil geometry and coefficients but
 exercises the melting/freezing and excess-water branches that the warm initial
-state never reaches.
+state never reaches.  A third snapshot gives every array a distinct non-zero
+level-0 (Fortran pad) value, which the reference never writes.
 """
 
 import copy
@@ -62,6 +63,8 @@ def _batch(soil, L):
         csoil=rep(soil.csoil), rosoil=rep(soil.rosoil),
         lammoist=rep(soil.lammoist), filtr=rep(soil.filtr),
         wa=rep(soil.wa), methgenmh=rep(soil.methgenmh),
+        # Work arrays: the kernel overwrites levels 1..ns but keeps their pads.
+        wl2=rep(soil.wl2), wl3=rep(soil.wl3),
         h1=np.full(L, soil.h1),
     )
 
@@ -166,6 +169,32 @@ def test_jax_soilforlake_phase_branches_L4():
     ss = _case()[1]
     _check(ss, 4, tweak=_freezing_snapshot)
     _check(ss, 4, tweak=_icy_snapshot)
+
+
+def _pad_snapshot(soil):
+    """Distinct non-zero Fortran pads (level 0) must survive unchanged.
+
+    The reference only ever writes levels ``1..ns``, so every pad keeps its
+    incoming value; a negative ``wi2`` pad also exercises the negative-ice
+    cleanup loop (which the reference likewise restricts to ``1..ns``).
+    """
+    nc = soil.Tsoil1.shape[1] - 1
+    soil.Tsoil1[0, nc] = -3.25
+    soil.Tsoil3[0, nc] = -1.5
+    soil.wl1[0, nc] = -0.25
+    soil.wl4[0, nc] = -0.75
+    soil.wi1[0, nc] = -0.55
+    soil.wi2[0, nc] = -0.5
+    soil.Sals1[0, nc] = 0.001
+    soil.wa[0] = 0.125
+    soil.methgenmh[0] = 0.5
+    soil.wl3[0] = 0.375
+
+
+def test_jax_soilforlake_pad_levels_L1_L4():
+    ss = _case()[1]
+    _check(ss, 1, tweak=_pad_snapshot)
+    _check(ss, 4, tweak=_pad_snapshot)
 
 
 def test_jax_soilforlake_jit_wrapper_matches_numpy():
