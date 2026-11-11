@@ -1198,3 +1198,22 @@ thin ice layer on days 108-113 and refreezes around day 120; the Python run
 refreezes about 6 days earlier.  This is consistent with the measured chaotic
 sensitivity (1-ULP spread shifts break-up by 5 days), but it changes the snow
 history and makes pointwise long-run comparison meaningless.
+
+## Acceleration phase 1: JIT tridiagonal/block solvers + checkpoints
+
+Deployed before further long-run validation:
+
+- `tridiag.progonka` and `blocktridiag.matrixprogonka` now call cached,
+  `jax.jit`-compiled versions of the exact Fortran recurrences.  Microbench:
+  ~12x (`progonka`, 51 nodes) and ~18x (`matrixprogonka`, 42 blocks); max
+  difference vs the NumPy reference 2.8e-17 / 2.2e-16.
+- One case-1 step: ~11 ms -> ~6.4 ms; `tools/bench.py` reports 122-137
+  lake-steps/s (was 89).  A 425-day single-case run drops from ~5-6 h to
+  ~2.5-3 h.
+- `tools/ref/run_case.py` now writes a daily checkpoint
+  (`<out>.ckpt.pkl`, atomic replace) and supports `--resume`; a resume is
+  bit-identical to an uninterrupted run.  It also stops at the first day with
+  non-finite `Tw1` and keeps the previous finite checkpoint.
+- Step-1/2/3 probe differences are unchanged (3.5e-13 / 1.0e-10 / 8.97e-9);
+  the one-day `summer1d` error is 5.3e-4 K, still inside the Fortran 1-ULP
+  spread.

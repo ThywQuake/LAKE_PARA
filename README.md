@@ -22,15 +22,16 @@ and the resume checklist.
 
 ## Performance (M5, partial)
 
-`tools/bench.py` measures the current NumPy single-lake driver.  On this VM:
+`tools/bench.py` measures the current NumPy/JAX-kernel single-lake driver.  On this VM:
 
 | Driver | lake-steps/s |
 |---|---|
-| `tools/bench.py --lakes 1 --steps 100` | 89 |
+| `tools/bench.py --lakes 1 --steps 100` | 122-137 |
 | Fortran check build (full425d, 1 lake) | ~6,600 |
 
-The radiation rewrite (NumPy `cumprod`) removed the dominant JAX-dispatch
-overhead; the remaining cost is the Python tridiagonal/k-epsilon/momentum
-loops.  The vectorised JAX `lax.scan` batch required by plan M5 is **not yet
-implemented**; `run.py` currently advances one lake per process
-(`cli batch --jobs N`).
+The radiation rewrite (NumPy `cumprod`) and JIT-compiled tridiagonal/block
+solvers removed most of the solver overhead; the remaining cost is the
+Python k-epsilon/momentum/soil loops.  The vectorised JAX `lax.scan` batch
+required by plan M5 is **not yet implemented**; `run.py` currently advances
+one lake per process (`cli batch --jobs N`).  Long runs are checkpointed daily
+(`run_case.py --resume`).
