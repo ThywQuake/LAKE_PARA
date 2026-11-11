@@ -1195,6 +1195,12 @@ def snow_cond_heat_coef(st: IceState, tempair):
         d = st.dens[i] / row0
         st.lams[i] = _s(0.419) * (6.0 * d ** 4 + _s(1.9) * d + _s(0.05))
         den = st.dens[i] * st.dz[i]
+        if den <= 0.0:
+            import warnings
+            warnings.warn("SNOW_COND_HEAT_COEF: zero active layer "
+                          f"i={i} itop={st.itop} dens={st.dens[i]!r} "
+                          f"dz={st.dz[i]!r} hs1={st.hs1!r} "
+                          f"snowmass={st.snowmass!r}")
         # Active snow layers should have dens*dz > 0.  Guard the pathological
         # zero-thickness layer so a long run stays finite; the state is still
         # reported by the snow-layer bookkeeping above.
