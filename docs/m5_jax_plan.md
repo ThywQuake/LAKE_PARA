@@ -61,3 +61,19 @@ iteration.  One `T_SOLVER` call on the step-1 state:
 `Tsurf3`, `Tw2` and `Tsoil2` match the NumPy solver to 1e-10.
 The next B3 is the soil-column preprocessing (`SOIL_COND_HEAT_COEF`,
 `SOILCOLSTEMP`, `LATERHEAT`) and postprocessing (`SOILFORLAKE`).
+
+## B5 delivered (2026-11-11)
+
+`src/lakematrix/jaxbatch/step.py` assembles the full case-1 step from the
+B1-B4 kernels and provides `run_case1_jax(params, rows, nsteps)` (`lax.scan`).
+Parity vs NumPy `step_case1`/`run_case1` on `summer1d`:
+
+- one step and ten steps, L=1 and L=4: `Tw1/Tsoil1` <=1e-13 K, `h1` 0 m,
+  `E1/eps1/lamw` <=1e-9 relative.
+- `lax.scan` vs a Python JAX loop is bit-identical.
+- Throughput (case-1 step): **4.9x** at L=1 (196 vs 39.8 lake-steps/s),
+  **14x** at L=8, **51x** at L=64 (3846 vs 75 lake-steps/s).
+
+Heavy compile tests are marked `slow` (the coupled step compiles to several GB
+per signature); run them individually, e.g.
+`pytest -q tests/test_jaxbatch_step.py::test_one_step_matches_numpy_L1`.

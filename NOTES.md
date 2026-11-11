@@ -1226,3 +1226,12 @@ are unchanged.  `run_batch`/`cli batch` accept `--ckpt`/`--resume` and save a
 pickled checkpoint at every output day; resuming a two-lake batch reproduces
 the uninterrupted final state (the earlier apparent mismatch was only an
 indexing error in the comparison: `water_temp` is `(lake, time, z)`).
+
+## M5/B5: full case-1 JAX step
+
+`jaxbatch/step.py` wires the B1-B4 kernels into one step and a `lax.scan`
+runner.  On `summer1d`, one step and ten steps match NumPy `step_case1` at
+`Tw1/Tsoil1` <=1e-13 K and `h1` exactly for L=1 and L=4; `lax.scan` and a
+Python JAX loop are bit-identical.  Throughput: 196/1055/3846 lake-steps/s
+for L=1/8/64 (NumPy 40/74/75), i.e. 4.9x/14x/51x.  The heavy compile tests
+are marked `slow` because the coupled step compiles to several GB.

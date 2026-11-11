@@ -330,6 +330,7 @@ def test_traceable_soil_pass_matches_shared_kernel(ref):
 # one full step and ten steps
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 def test_one_step_matches_numpy_L1(ref):
     state = _state(ref, 1)
     new = jstep.step_case1_jax(state, _params(ref), ref["rows"], 1)
@@ -339,6 +340,7 @@ def test_one_step_matches_numpy_L1(ref):
     _check_step(got, ref["one"], lanes=1, tag="step 1, L=1")
 
 
+@pytest.mark.slow
 def test_ten_steps_match_numpy_L1(ref):
     params = _params(ref)
     final, diags = jstep.run_case1_jax(params, ref["rows"], NSTEPS,
@@ -363,6 +365,7 @@ def test_ten_steps_match_numpy_L1(ref):
     assert np.asarray(diags["kt"]).shape == (NSTEPS, 1, ref["case"].M + 2)
 
 
+@pytest.mark.slow
 def test_lax_scan_matches_python_loop(ref):
     """The ``lax.scan`` runner == the same steps driven from Python."""
     params = _params(ref)
@@ -379,6 +382,7 @@ def test_lax_scan_matches_python_loop(ref):
                                    atol=0, err_msg=key)
 
 
+@pytest.mark.slow
 def test_one_step_matches_numpy_L4(ref):
     """Four identical lanes must reproduce the NumPy single-lake step."""
     state = _state(ref, 4)
@@ -390,6 +394,7 @@ def test_one_step_matches_numpy_L4(ref):
         np.testing.assert_array_equal(arr, np.broadcast_to(arr[:1], arr.shape))
 
 
+@pytest.mark.slow
 def test_ten_steps_match_numpy_L4(ref):
     params = _params(ref, 4)
     final, _diags = jstep.run_case1_jax(params, ref["rows"], NSTEPS,
@@ -412,6 +417,7 @@ def test_ten_steps_match_numpy_L4(ref):
 # benchmark
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 def test_benchmark_jax_batch_vs_numpy(ref):
     """One step: JAX batch ``L = 1, 8, 64`` vs the NumPy per-lake loop.
 
