@@ -820,3 +820,15 @@ which we had omitted.  Adding it:
 
 3.33-day is 0.0148 K in one run; the 20-day rerun will show whether this is a
 transient or a real regression.
+
+## M3: dhwtrib relaxation reverted
+
+The `(h10-h1)/10` relaxation is only the Fortran fallback branch.  In the
+reference setup `tribheat 0` but `N_tribin 1` remains; the tributary state is
+ambiguous, and applying the relaxation made the 20-day error worse
+(0.183 K at day 8 vs 0.086 before).  Since v1 excludes tributaries, `dhwtrib`
+is set to 0 again.
+
+The correct step-3 `h1` then needs a different explanation; the h1 match with
+relaxation was likely accidental.  Keep the other exactness fixes (zsoil,
+dhw order, surface velocity).
