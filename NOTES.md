@@ -727,3 +727,18 @@ At step 34560 (day 8):
 So the remaining 0.03-0.09 K on stratified days is a k-epsilon/`lamw`
 amplitude drift.  Next: compare `KE_in` `u1/u2/k2` at day 8 and trace the
 first diverging field from day 3.3 to 8.
+
+## M3: day-8 K_EPSILON inputs
+
+At step 34560:
+
+- `u1` diff 0.0123 m/s (ours -0.102 vs ref -0.090 at the surface),
+  `u2` 0.0096, `v1` 0.0129, `v2` 0.0105;
+- `k2` ours 1.1e-4/1.0e-3/2.2e-3 vs ref 2.4e-6/1.5e-4/1.0e-3 — too high;
+- `lamw` too high by 1.2e4 at the surface;
+- `Tw1` 0.081 K.
+
+The velocity field is already 13% off by day 8, and the k-epsilon diffusivity
+inherits it.  Next: compare the momentum state at days 1/2/3 (probe
+`MOM_1110_in/out`) to find the first momentum divergence; candidates are the
+seiche/surface-slope state (`alphax/alphay`, `hx*`) and `k2_old`.
