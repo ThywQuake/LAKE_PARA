@@ -480,8 +480,8 @@ def diff_coef_snow(a, b, c, d, n0, n1, m0, m1, dt, st: IceState):
         lam2 = 0.5 * (st.lams[j] + st.lams[j + 1])
         lam1 = 0.5 * (st.lams[j - 1] + st.lams[j])
         dzmean = 0.5 * (st.dz[j - 1] + st.dz[j])
-        a[i] = -0.5 * lam1 / st.dz[j - 1]
-        b[i] = -0.5 * lam2 / st.dz[j]
+        a[i] = -0.5 * lam1 / max(st.dz[j - 1], 1e-12)
+        b[i] = -0.5 * lam2 / max(st.dz[j], 1e-12)
         c[i] = a[i] + b[i] - dt_inv * (st.cs[j] * st.dens[j] * dzmean)
         d[i] = (-st.T[j] * dt_inv * (st.cs[j] * st.dens[j] * dzmean)
                 + a[i] * st.T[j - 1]
@@ -610,14 +610,14 @@ def t_diff_ice(surf, Tsurf, dt, snow, ice, water, deepice, isoilcol, ifflux,
 
             if ice == 1:
                 # ------------------ SNOW-ICE INTERFACE (t_solver 280-288) --
-                a[ms] = -0.25 * (st.lams[ms - 1] + st.lams[ms]) / st.dz[ms - 1]
+                a[ms] = -0.25 * (st.lams[ms - 1] + st.lams[ms]) / max(st.dz[ms - 1], 1e-12)
                 b[ms] = 0.5 * (-st.lami_v[1] / (st.ddzi[1] * l1)
                                + 0.5 * st.ci_m_roi_v[1] * st.dhi0 * dt_inv)
                 c[ms] = (a[ms] + b[ms]
-                         - 0.5 * dt_inv * (st.cs[ms] * st.dens[ms] * st.dz[ms]
+                         - 0.5 * dt_inv * (st.cs[ms] * st.dens[ms] * max(st.dz[ms], 1e-12)
                                            + st.ci_m_roi_v[1] * st.ddzi[1] * l1))
                 d[ms] = (-st.Ti1[1] * 0.5 * dt_inv
-                         * (st.cs[ms] * st.dens[ms] * st.dz[ms]
+                         * (st.cs[ms] * st.dens[ms] * max(st.dz[ms], 1e-12)
                             + st.ci_m_roi_v[1] * st.ddzi[1] * l1)
                          - st.SR_botsnow + st.rad_integr_ice[1]
                          + a[ms] * st.T[ms - 1]
@@ -714,10 +714,10 @@ def t_diff_ice(surf, Tsurf, dt, snow, ice, water, deepice, isoilcol, ifflux,
                              / st.dzs[1])
                     c[ms] = (a[ms] + b[ms]
                              - 0.5 * dt_inv
-                             * (st.cs[ms] * st.dens[ms] * st.dz[ms]
+                             * (st.cs[ms] * st.dens[ms] * max(st.dz[ms], 1e-12)
                                 + st.csoil[1] * st.rosoil[1] * st.dzs[1]))
                     d[ms] = (-Tsoil1[1, ic] * 0.5 * dt_inv
-                             * (st.cs[ms] * st.dens[ms] * st.dz[ms]
+                             * (st.cs[ms] * st.dens[ms] * max(st.dz[ms], 1e-12)
                                 + st.csoil[1] * st.rosoil[1] * st.dzs[1])
                              - st.SR_botsnow
                              + a[ms] * st.T[ms - 1]
@@ -1194,7 +1194,11 @@ def snow_cond_heat_coef(st: IceState, tempair):
         # ``**4`` in the last bit; check against the reference build.
         d = st.dens[i] / row0
         st.lams[i] = _s(0.419) * (6.0 * d ** 4 + _s(1.9) * d + _s(0.05))
-        xx = st.wl[i] * row0 / (st.dens[i] * st.dz[i])
+        den = st.dens[i] * st.dz[i]
+        # Active snow layers should have dens*dz > 0.  Guard the pathological
+        # zero-thickness layer so a long run stays finite; the state is still
+        # reported by the snow-layer bookkeeping above.
+        xx = 0.0 if den <= 0.0 else st.wl[i] * row0 / den
         st.cs[i] = ci * (1.0 - xx) + cw * xx
 
 
