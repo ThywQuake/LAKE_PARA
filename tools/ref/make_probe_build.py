@@ -32,7 +32,7 @@ ENTRY_VARS = [
     "ddz", "ddz05", "dzeta_int", "z_full", "zsoil", "zsoilcols(1:nsoilcols+1,ix,iy)",
     "tempair", "humair", "pressure", "uwind", "vwind", "precip",
     "longwave", "shortwave", "cloud", "netrad", "time", "nstep",
-    "lamw", "E1", "eps1", "k2", "kt",
+    "lamw", "E1", "eps1", "k2", "kt", "dhwfsoil", "dhw", "dhw0",
 ]
 
 

@@ -846,3 +846,21 @@ is the `dhwfsoil` carried between the **methane SOILCOLSTEMP** call and
 `UPDATE_NEXT_TIMESTEP`: the probe's step-3 `dhw` implies a different carried
 value than the step-2 checkpoint.  This must be resolved with per-call probes
 rather than guessed.
+
+## M3: `dhw`/`dhwfsoil` probe semantics are offset
+
+`LAKE_entry`/`LAKE_exit` with `dhwfsoil`/`dhw`/`dhw0` show:
+
+- step 1 entry/exit `dhwf=-2.283e-4`, `dhw=0`;
+- step 2 entry `dhwf=-1.606e-4`, but `dhw - dhw0 = -2.283e-4` (step-1 value);
+- step 3 entry `dhwf=-1.459e-4`, `dhw - dhw0 = -1.377e-4` (neither entry
+  nor previous exit).
+
+So the probe `dhw`/`dhwfsoil` are not the values used by the current step's
+`dhw` computation; the `LAKE_entry` insertion point is after the update but
+the quantities are still from another stage.  Exact step-level acceptance
+cannot be driven from these tags; a Fortran-side print *inside* the case-1
+block (before/after `dhw` assignment) would be needed.
+
+The v1 code currently keeps `dhwtrib=0` (no tributaries), `dhw` before soil,
+and is otherwise bit-exact at step 1/2.
