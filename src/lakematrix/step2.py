@@ -1,0 +1,337 @@
+"""Case-2 (ice over water) step, single lake (M4).
+
+The Fortran case is split into 2.1 (snow on ice) and 2.2 (no snow); the call
+sequence is the same.  This module implements the no-snow path first, matching
+``lake.f90:1613-1877``; the snow branch is added on top of the same sequence.
+"""
+
+from types import SimpleNamespace
+
+import numpy as np
+
+from .constants import C
+from .physics import surface
+from .physics.bathym import bathymetry
+from .physics.density import ddens_dtemp, water_dens_ts
+from .physics.ice import (ice_increments, ice_increments_nosnow,
+                          ice_properties, make_ice_state, snow_calc,
+                          snow_cond_heat_coef, sr_botsnow, t_diff_ice)
+from .physics.radiation import FRACBANDS, rad_update
+from .physics.salinity import s_diff
+from .physics.soil import (laterheat, soil_cond_heat_coef, soilcolstemp,
+                           soilforlake)
+from .physics.surface import (IceSurfaceContext, heatbalance_ice,
+                              heatbalance_water, radbalance, surf_char)
+from .physics.turb import diffmin_hs, mixed_layer_calc, turb_scales
+from .physics.momentum import momentum_solver
+from .physics.tsolver import t_solver
+from .step import _refresh_geometry
+
+
+def _pad(x, n):
+    out = np.zeros(n + 1)
+    out[1:] = np.asarray(x)[:n]
+    return out
+
+
+def sync_ice(ss, params, grid, st, l=0):
+    """Fill the persistent `IceState` from the current water/soil state."""
+    ice = ss.ice
+    if ice is None:
+        ice = make_ice_state(
+            params.M, params.Mice, params.ns, 100,
+            geom=ss.soil_geom, isoilcol=params.nsoilcols,
+            nmeltpoint=int(np.atleast_1d(params.nmeltpoint)[0]),
+            soilbotflx=float(np.atleast_1d(params.soilbotflx)[0]))
+        ss.ice = ice
+    ice.ddz = np.array(ss.soil_geom.ddz, copy=True)
+    ice.ddz05 = np.array(ss.soil_geom.ddz05, copy=True)
+    ice.ddzi = np.array(ss.soil_geom.ddzi, copy=True)
+    ice.ddzi05 = np.array(ss.soil_geom.ddzi05, copy=True)
+    ice.dzeta_int = np.r_[0.0, grid.dzeta_int]
+    ice.dzetai_int = np.r_[0.0, grid.dzetai_int]
+    ice.bathymwater = list(ss.soil_geom.bathymwater)
+    ice.bathymice = list(ss.soil_geom.bathymice)
+    ice.bathymdice = list(ss.soil_geom.bathymdice)
+    ice.Ti1[1:] = st.Ti1[l]
+    ice.Tis1[1:] = st.Tis1[l]
+    ice.Tw1[1:] = st.Tw1[l]
+    ice.Tw2[1:] = st.Tw1[l]
+    ice.lamw[1:] = st.lamw[l]
+    ice.Sal2[1:] = st.Sal1[l]
+    ice.h1 = float(st.h1[l])
+    ice.l1 = float(st.l1[l])
+    ice.ls1 = float(st.ls1[l])
+    ice.snowmass = float(st.snowmass[l])
+    ice.hs1 = float(st.hs1[l])
+    ice.flag_snow = 0
+    ice.dhw = 0.0
+    ice.dhw0 = 0.0
+    ice.dhi = 0.0
+    ice.dhi0 = 0.0
+    ice.dls = 0.0
+    ice.dls0 = 0.0
+    ice.dhwfsoil = float(ss.soil.dhwfsoil)
+    ice.dhwtrib = 0.0
+    ice.PEMF = np.zeros(params.M + 2)
+    ice.pt_down_f = np.zeros(params.M + 2)
+    ice.Tsoil1 = ss.soil.Tsoil1
+    ice.Tsoil2 = ss.soil.Tsoil2
+    ice.lamsoil = ss.soil.lamsoil
+    ice.csoil = ss.soil.csoil
+    ice.rosoil = ss.soil.rosoil
+    ice.dzs = ss.soil_params.dzs
+    ice.isoilcol = params.nsoilcols
+    ice_properties(ice)
+    return ice
+
+
+def _radiation(ice, params, grid, l, Erad, shortwave, snow=False):
+    ex = float(np.atleast_1d(params.extice)[l])
+    extinct_ice = np.full((params.Mice, 4), ex)
+    ice_flux, ice_int = rad_update(extinct_ice,
+                                   grid.ddzi05[:params.Mice] * ice.l1,
+                                   np.asarray(FRACBANDS) * Erad)
+    ice.rad_integr_ice = np.asarray(ice_int)
+    flux0 = np.asarray(ice_flux[-1])
+    extinct_water = np.empty((params.M, 4))
+    extinct_water[:, 0] = 3.13
+    extinct_water[:, 1] = float(np.atleast_1d(params.extwat)[l])
+    extinct_water[:, 2] = 1.73
+    extinct_water[:, 3] = 1.087e3
+    water_flux, water_int = rad_update(extinct_water,
+                                       grid.ddz05[:params.M] * ice.h1, flux0)
+    ice.rad_integr_water = np.asarray(water_int)
+    if ice.ls1 != 0.0:
+        dflux, dint = rad_update(extinct_ice,
+                                 grid.ddzi05[:params.Mice] * ice.ls1,
+                                 np.asarray(water_flux[-1]))
+        ice.rad_integr_deepice = np.asarray(dint)
+    else:
+        ice.rad_integr_deepice = np.zeros(params.Mice + 1)
+    return ice_flux, water_flux
+
+
+def step_case2_to_solver(ss, params, grid, rows, nstep=1, l=0,
+                         init_step=False):
+    """Case-2 chain through T_SOLVER (no snow)."""
+    from .forcing import at_time
+
+    st = ss.state
+    dt = params.dt
+    _refresh_geometry(ss, params, grid, l, st)
+    ice = sync_ice(ss, params, grid, st, l)
+
+    f = at_time(rows, nstep * dt, interval=float(np.atleast_1d(params.interval)[0]))
+    tempair, pressure, longwave, shortwave = f[0] - C.Kelvin0, f[1], f[2], f[3]
+    uwind, vwind, humair, precip = f[4], f[5], f[6], f[7]
+    hour = float(np.atleast_1d(params.hour0)[0]) + nstep * dt / 3600.0
+    year = int(np.atleast_1d(params.year0)[0])
+    month = int(np.atleast_1d(params.month0)[0])
+    day = int(np.atleast_1d(params.day0)[0])
+    phi = float(np.atleast_1d(params.phi)[l])
+    fetch = float(np.atleast_1d(params.fetch)[l])
+    surftyp = 2  # ice
+    sc = surf_char(surftyp, year, month, day, hour, phi, fetch, uwind,
+                   1.0e-2, int(np.atleast_1d(params.extwat)[l] * 0 + 1))
+    albedo, albedo_lw, emis = sc["albedo"], sc["albedo_lw"], sc["emissivity"]
+
+    row = water_dens_ts(np.r_[0, st.Tw1[l]], np.r_[0, st.Sal1[l]])
+    ml = mixed_layer_calc(row, np.r_[0, grid.ddz], grid.dzeta_05int,
+                          float(st.h1[l]), params.M)
+
+    Erad = shortwave * (1.0 - albedo)
+    _radiation(ice, params, grid, l, Erad, shortwave)
+
+    inc = ice_increments_nosnow(ice, dt, precip=precip, tempair=tempair,
+                                Elatent=float(ss.Elatent))
+    ice.dhwfsoil = float(ss.soil.dhwfsoil)
+
+    # soil columns at the current water temperature
+    ss.soil.Tw1 = np.r_[0, st.Tw1[l]]
+    ss.soil.Ti1 = np.r_[0, st.Ti1[l]]
+    ss.soil.Tis1 = np.r_[0, st.Tis1[l]]
+    ss.soil.h1 = float(st.h1[l])
+    ss.soil.l1 = float(st.l1[l])
+    ss.soil.ls1 = float(st.ls1[l])
+    ss.soil.pressure = pressure
+    soil_cond_heat_coef(ss.soil, ss.soil_params, is_=params.nsoilcols)
+    ss.soil = soilcolstemp(ss.soil, ss.soil_params, dt)
+    lsh = laterheat(ss.soil, ss.soil_params, ss.soil.soilflux, onlywater=False)
+    ss.lsh = lsh
+    ice.lsh_water = np.asarray(lsh.water)
+    ice.lsh_ice = np.asarray(lsh.ice)
+    ice.lsh_dice = np.asarray(lsh.dice)
+
+    ctx = IceSurfaceContext(
+        ice=ice, snow=0, water=1, dt=dt, fetch=fetch, uwind=uwind,
+        vwind=vwind, u=float(ss.mom.u1[0]), v=float(ss.mom.v1[0]),
+        tempair=tempair, pressure=pressure, humair=humair, zref=2.0,
+        roughness=sc["roughness"], relhums=sc["relhums"], aM=sc["aM"],
+        bM=sc["bM"], l1=float(st.l1[l]), longwave=longwave,
+        shortwave=shortwave, netrad=-1.0, cloud=-1.0, albedo=albedo,
+        albedo_lw=albedo_lw, emissivity=emis,
+        radwater_integr=ice.rad_integr_water,
+        radice_integr=ice.rad_integr_ice, isoilcol=params.nsoilcols)
+
+    def fn(t):
+        return heatbalance_ice(t, ctx)
+
+    r = t_solver(fn, nstep, surftyp, ss.surftyp_prev, ss.Tsurf_prev)
+    ice = t_diff_ice(0, r["Tsurf3"], dt, 0, 1, 1,
+                     1 if ice.ls1 != 0.0 else 0, params.nsoilcols, False,
+                     r["state"]["ice"])
+    ss.Tsurf_prev = r["Tsurf3"]
+    ss.surftyp_prev = surftyp
+    return dict(Tsurf3=r["Tsurf3"], Bal3=r["Bal3"], iter=r["iter"],
+                state=dict(ice=ice, Elatent=r["state"]["Elatent"],
+                           eflux0_kinem=r["state"]["eflux0_kinem"]),
+                ice=ice, row=row, ml=ml, sc=sc, inc=inc, integ=None,
+                uwind=float(uwind), vwind=float(vwind), fetch=fetch)
+
+
+def step_case2(ss, params, grid, rows, nstep=1, l=0, init_step=False):
+    """Full case-2 step (no snow): finish soil/salinity/turbulence/layers."""
+    r = step_case2_to_solver(ss, params, grid, rows, nstep, l,
+                             init_step=init_step)
+    st = ss.state
+    dt = params.dt
+    M = params.M
+
+    ice = r["ice"]
+    Tw2 = np.asarray(ice.Tw2)
+    Tsoil2 = np.asarray(ice.Tsoil2)
+    ss.soil.Tsoil2 = Tsoil2
+    ss.soil = soilforlake(ss.soil, ss.soil_params, dt, is_=params.nsoilcols)
+
+    Sal1 = np.r_[0, st.Sal1[l]]
+    lamsal = np.r_[0, (st.lamw[l] - C.lamw0) / C.cw_m_row0 * C.alsal + C.lamsal0]
+    dhwe = -float(r["state"]["Elatent"]) / (C.Lwv * C.row0) * dt
+    dhwp = float(ice.dhw0) - dhwe
+    Sal2 = s_diff(Sal1, dt, ice.dhw, ice.dhw0, dhwp, dhwe, lamsal,
+                  np.r_[0, ss.bathym.area_int[l]],
+                  np.r_[0, ss.bathym.area_half[l]], np.r_[0, grid.ddz],
+                  float(st.h1[l]), np.r_[0, grid.dzeta_int], grid.ddz05, M)
+
+    row2 = water_dens_ts(Tw2, Sal2)
+
+    # momentum (after T_SOLVER, as in lake.f90:1546/1811)
+    ss.mom_params.uwind = float(r["uwind"])
+    ss.mom_params.vwind = float(r["vwind"])
+    ss.mom_params.cdmw = ss.cdmw
+    ss.mom_params.fetch = float(r["fetch"])
+    ss.mom.Tw1 = st.Tw1[l]
+    ss.mom.Sal1 = st.Sal1[l]
+    ss.mom.row = water_dens_ts(st.Tw1[l], st.Sal1[l])
+    ss.mom.E1 = st.E[l]
+    ss.mom.eps1 = st.eps[l]
+    ss.mom.h1 = float(st.h1[l])
+    ss.mom.l1 = float(st.l1[l])
+    ss.mom.ls1 = float(st.ls1[l])
+    ss.mom.dhw = ice.dhw
+    ss.mom.dhw0 = ice.dhw0
+    ss.mom_u1_old = np.array(ss.mom.u1, copy=True)
+    ss.mom_v1_old = np.array(ss.mom.v1, copy=True)
+    mom_res = momentum_solver(ss.mom, ss.mom_params, dt)
+    ss.mom = mom_res.state
+    ss.mom.u1 = np.array(mom_res.u2, copy=True)
+    ss.mom.v1 = np.array(mom_res.v2, copy=True)
+
+    ke = ss.ke
+    ke.e1 = np.r_[0, st.E[l]]
+    ke.eps1 = np.r_[0, st.eps[l]]
+    u_old = (np.asarray(ss.mom_u1_old) if ss.mom_u1_old is not None
+             else np.asarray(ss.mom.u1))
+    v_old = (np.asarray(ss.mom_v1_old) if ss.mom_v1_old is not None
+             else np.asarray(ss.mom.v1))
+    ke.u1 = np.r_[0, u_old]
+    ke.v1 = np.r_[0, v_old]
+    ke.um = np.zeros(M + 2)
+    ke.vm = np.zeros(M + 2)
+    ke.u2 = np.r_[0, np.asarray(mom_res.u2)]
+    ke.v2 = np.r_[0, np.asarray(mom_res.v2)]
+    ke.tw1 = np.r_[0, st.Tw1[l]]
+    ke.tw2 = Tw2
+    ke.sal1 = Sal1
+    ke.sal2 = Sal2
+    ke.row = np.r_[0, ss.mom.row] if np.size(ss.mom.row) == M + 1 else np.asarray(r["row"])
+    ke.row2 = np.asarray(row2)
+    ke.h1 = float(st.h1[l])
+    ke.dhw = ice.dhw
+    ke.dhw0 = ice.dhw0
+    ke.vol = float(ss.bathym.vol[l])
+    ke.botar = float(ss.bathym.botar[l])
+    ke.b0 = 0.0
+    ke.Buoyancy0 = (C.g / C.row0 * float(ddens_dtemp(st.Tw1[l][0], 0.0))
+                    * float(r["state"]["eflux0_kinem"]))
+    ke.tau_air = 0.0
+    ke.tau_wav = 0.0
+    ke.tau_i = 0.0
+    ke.tau_gr = 0.0
+    ke.uwind = float(r["uwind"])
+    ke.vwind = float(r["vwind"])
+    ke.fetch = float(np.atleast_1d(params.fetch)[l])
+    ke.roughness = float(r["sc"]["roughness"])
+    ke.knum = np.zeros(M + 2)
+    ke.veg_sw = np.zeros(M + 2)
+    from .physics.kepsilon import k_epsilon
+    ke = k_epsilon(ke, dt, dt_keps=dt, nstep_keps=1, params=ss.ke_params)
+    ss.ke = ke
+    lamw_new = C.lamw0 + np.maximum(ke.kt[1:M + 1], 0.0)
+
+    lay = dict(h1=float(st.h1[l]) + ice.dhw,
+               l1=float(st.l1[l]) + ice.dhi,
+               ls1=float(st.ls1[l]) + ice.dls,
+               hs1=float(st.hs1[l]), snowmass=float(st.snowmass[l]))
+    return dict(Tw1=Tw2[1:], Sal1=Sal2[1:],
+                Tsoil1=ss.soil.Tsoil1[1:, 1:], Ti1=ice.Ti2[1:],
+                Tis1=ice.Tis2[1:], h1=lay["h1"], l1=lay["l1"],
+                ls1=lay["ls1"], hs1=lay["hs1"],
+                snowmass=lay["snowmass"],
+                E1=ke.e1[1:], eps1=ke.eps1[1:], lamw=lamw_new,
+                Elatent=float(r["state"]["Elatent"]),
+                dhwfsoil=float(ss.soil.dhwfsoil), dhw=ice.dhw,
+                dhw0=ice.dhw0, Tsurf3=r["Tsurf3"], Bal3=r["Bal3"],
+                iter=r["iter"], ice=ice)
+
+
+def run_case2(params, grid, rows, nsteps=180, l=0, callback=None,
+              store=True):
+    """Run `nsteps` case-2 steps from the current state (no transitions)."""
+    ss = build_case2_state(params, grid)
+    st = ss.state
+    dt = params.dt
+    out = []
+    for n in range(1, nsteps + 1):
+        r = step_case2(ss, params, grid, rows, n, l, init_step=(n == 1))
+        st.Tw1[l] = r["Tw1"]; st.Sal1[l] = r["Sal1"]
+        st.Tsoil1[l] = r["Tsoil1"]; st.Ti1[l] = r["Ti1"]
+        st.Tis1[l] = r["Tis1"]; st.h1[l] = r["h1"]
+        st.l1[l] = r["l1"]; st.ls1[l] = r["ls1"]
+        st.hs1[l] = r["hs1"]; st.snowmass[l] = r["snowmass"]
+        st.E[l] = r["E1"]; st.eps[l] = r["eps1"]; st.lamw[l] = r["lamw"]
+        st.time[l] += dt; st.nstep[l] = n
+        ss.Elatent = r["Elatent"]
+        ss.soil.dhwfsoil = r["dhwfsoil"]
+        if store:
+            out.append(r)
+        if callback is not None:
+            callback(n, ss, r)
+    return ss, out
+
+
+def build_case2_state(params, grid):
+    from .step import build_step_state
+    ss = build_step_state(params, grid)
+    st = ss.state
+    # The caller is expected to have filled st.l1/Ti1/Tis1 (probe or a
+    # case-1 -> 2 transition); this only allocates the ice storage.
+    from .physics.ice import make_ice_state
+    ss.ice = make_ice_state(
+        params.M, params.Mice, params.ns, 100, geom=ss.soil_geom,
+        isoilcol=params.nsoilcols,
+        nmeltpoint=int(np.atleast_1d(params.nmeltpoint)[0]),
+        soilbotflx=float(np.atleast_1d(params.soilbotflx)[0]))
+    ss.Tsurf_prev = -999.0
+    ss.surftyp_prev = 0
+    return ss

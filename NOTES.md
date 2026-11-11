@@ -1024,3 +1024,37 @@ One-day comparison against the tracked reference moved from 2.2e-4 to 3.7e-4 K
 Fortran 1-ULP sensitivity (5.8e-4 K) and build-to-build spread (3.6e-4 K), so
 the day-1 aggregate cannot resolve the change; the step-3 probe is the
 decisive measurement.  The 60-day rerun with this fix is in progress.
+
+## M4: case-2 no-snow step and ice bathymetry (first validation)
+
+Two bugs were found while starting case 2:
+
+1. `_zsoil_geom` built `bathymice`/`bathymdice` as the **full lake area** at
+   every level.  The Fortran `BATHYMETRY` interpolates them from the
+   morphometry table at `depth - max(depth) + h1 + l1 + ls1` (ice) and
+   `+ ls1` (deep ice), with the vertical positions taken from `ddzi*l1` /
+   `ddzi*ls1`.  The full-area shortcut put cold ice over the shallow soil
+   columns and made `TSURFSOILCOL` return e.g. -0.012 C instead of +0.0134 C.
+   Fixed in `step._zsoil_geom`; `Tsoilsurf` now matches the `SCOL` probe to
+   ~1e-8 K.  (`bathymdice` was also accidentally aliased to `bice`; fixed.)
+2. The probe build instrumented only the first `SOILFORLAKE` call (case 1).
+   `tools/ref/make_probe_build.py` now instruments every call, so case-2
+   probes contain `SOILF_in`/`SOILF_out` (wl1/wi1 etc.).
+
+`step2.py` starts the case-2 (no-snow) path.  Initialised from the probe state
+at `full425d` step 500000 (`probe-w3/499999/LAKE_exit` + `SOILF_out` +
+`MOM_1899_in`), one step gives:
+
+| Field | Difference vs `probe/500000/LAKE_exit` |
+|---|---|
+| `Tw1` | 5.5e-7 |
+| `Tsoil1` | 5.5e-7 |
+| `Ti1` | 2.3e-5 |
+| `Tsurf3` | 2.3e-5 |
+| `l1` | 5.1e-7 |
+| `h1` | 1.5e-6 |
+| `lamw` | still differs (turbulence inputs; under investigation) |
+
+These are inside the revised solver-noise acceptance; the snow branch,
+case transitions and `lamw`/`K_EPSILON` inputs are the next M4 items.  The
+60-day `summer60d` rerun with the step-3 bathymetry fix is still running.

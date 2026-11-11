@@ -57,3 +57,42 @@ def test_ice_surface_solver_smoke():
     r = t_solver(lambda t: heatbalance_ice(t, ctx), 1, 2, 0, 0.0)
     assert np.isfinite(r["Tsurf3"])
     assert -20.0 < r["Tsurf3"] < 2.0
+
+
+def test_ice_bathymetry_uses_morphometry():
+    """BATHYMETRY interpolates the ice area, not the full lake area."""
+    from lakematrix.step import _zsoil_geom
+
+    case = read_case(ROOT / "ref" / "v1" / "full425d")
+    grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
+                       case.soil_depth, 0.02)
+    ss = build_step_state(case, grid)
+    st = ss.state
+    st.l1[0] = 0.0527
+    from lakematrix.physics.bathym import bathymetry
+    from lakematrix.constants import C
+    b = bathymetry(case, grid, st, C.pref)
+    geom = _zsoil_geom(case, grid, 0, st, b)
+    top = geom.bathymice[1].area_int
+    assert top < float(case.area_lake[0])
+    assert geom.bathymdice[1].area_int == float(case.area_lake[0])
+
+
+def test_case2_one_step_smoke():
+    import numpy as np
+    from lakematrix.forcing import read_ascii
+    from lakematrix.step2 import step_case2
+
+    case = read_case(ROOT / "ref" / "v1" / "full425d")
+    grid = create_grid(case.M, case.Mice, case.ns, case.d_surf, case.d_bot,
+                       case.soil_depth, 0.02)
+    rows = read_ascii(ROOT / "ref" / "v1" / "full425d" / "meteo" / "test.dat")
+    ss = build_step_state(case, grid)
+    st = ss.state
+    st.l1[0] = 0.1
+    st.Ti1[0] = np.linspace(-5.0, 0.0, case.Mice + 1)
+    st.Tw1[0] = np.maximum(st.Tw1[0], 0.0)
+    r = step_case2(ss, case, grid, rows, 460620, 0)
+    for key in ("Tw1", "Tsoil1", "Ti1", "lamw"):
+        assert np.all(np.isfinite(r[key]))
+    assert r["l1"] > 0.0

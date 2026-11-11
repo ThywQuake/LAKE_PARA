@@ -16,7 +16,7 @@ Authoritative plan: `LAKEMATRIX-PLAN.en.md` (English) and
 | M1: case-1 state, forcing, grid | done |
 | M2: bathymetry, radiation, surface fluxes, density, tridiagonal | done |
 | M3: case-1 step (`SOILFORLAKE`, `LATERHEAT`, `T_DIFF`, `T_SOLVER`, `K_EPSILON`, momentum, layers) | **in progress** |
-| M4: ice/snow (cases 2/3) | partial: `physics/ice.py` (`t_diff_ice`, snow_calc, increments), `IceSurfaceContext`/`heatbalance_ice`; no `step_case2` yet |
+| M4: ice/snow (cases 2/3) | **in progress**: `physics/ice.py`, `IceSurfaceContext`/`heatbalance_ice`, `step2.py` case-2 no-snow step (one-step probe: `Tw1` 5.5e-7, `Tsoil1` 5.5e-7, `Ti1` 2.3e-5); snow branch and transitions pending |
 | M5: CPU/JAX batch performance | not started |
 | M6: NetCDF output + CLI | partial: `output.py`, `cli.py`, `tools/compare.py`; no batch lake dimension |
 

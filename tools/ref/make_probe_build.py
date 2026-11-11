@@ -483,6 +483,7 @@ def patch_kepsilon_internal(path):
 
 def patch_soilforlake_lake(path):
     lines = path.read_text().splitlines(keepends=True)
+    inserts = []
     for i, line in enumerate(lines):
         if 'call SOILFORLAKE' not in line:
             continue
@@ -498,10 +499,11 @@ def patch_soilforlake_lake(path):
         post = "".join(f'  call LM_PROBE("SOILF_out", "{n}", {n})\n' for n in
                        ("Tsoil1", "Tsoil3", "wl1", "wi1", "wl4", "wi2",
                         "dhwfsoil"))
+        inserts.append((i, end, pre, post))
+    for i, end, pre, post in reversed(inserts):
         lines.insert(end + 1, post)
         lines.insert(i, pre)
-        path.write_text("".join(lines))
-        return
+    path.write_text("".join(lines))
 
 
 

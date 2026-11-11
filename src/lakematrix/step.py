@@ -12,7 +12,8 @@ import numpy as np
 
 from .constants import C
 from .physics import surface
-from .physics.bathym import bathymetry, soil_bathymetry
+from .grid import interp_profile
+from .physics.bathym import _lxly, bathymetry, soil_bathymetry
 from .physics.density import water_dens_ts
 from .physics.kepsilon import KEpsilonParams, KEpsilonState, k_epsilon
 from .physics.layers import advance_case1
@@ -45,6 +46,8 @@ class StepState:
     buo: float = 0.0
     lsh: object = None
     bathym: object = None
+    ice: object = None
+    lsh: object = None
     Tsurf_prev: float = -999.0
     surftyp_prev: int = 0
     cdmw: float = 1.0e-15
@@ -70,14 +73,49 @@ def _zsoil_geom(params, grid, l, st, bathym):
                            Ly=bathym.Ly[l], Lx_half=bathym.Lx_half[l],
                            Ly_half=bathym.Ly_half[l])
     area = float(np.atleast_1d(params.area_lake)[l])
-    bice = bathym_levels(params.Mice + 1, area_int=np.full(params.Mice + 1, area),
-                         area_half=np.full(params.Mice, area))
+
+    def _ice_levels(thickness, total):
+        """BATHYMETRY's ice/deep-ice area interpolation (bathym_mod.f90)."""
+        n = params.Mice + 1
+        if thickness <= C.small_value:
+            a = np.full(n, area)
+            return bathym_levels(n, area_int=a, area_half=a[:-1],
+                                 Lx=np.full(n, _lxly(area, int(params.lakeform[l]),
+                                                     float(params.cellipt[l]))[0]),
+                                 Ly=np.full(n, _lxly(area, int(params.lakeform[l]),
+                                                     float(params.cellipt[l]))[1]),
+                                 Lx_half=np.full(n - 1, _lxly(area, int(params.lakeform[l]),
+                                                              float(params.cellipt[l]))[0]),
+                                 Ly_half=np.full(n - 1, _lxly(area, int(params.lakeform[l]),
+                                                              float(params.cellipt[l]))[1]))
+        table = params.morphometry[l, :int(params.morphometry_len[l]), :]
+        dep = table[:, 0]
+        ar = table[:, 1]
+        zz = dep - np.max(dep) + total
+        pos = np.zeros(n)
+        for i in range(1, n):
+            pos[i] = pos[i - 1] + grid.ddzi[i - 1] * thickness
+        pos_half = np.zeros(n - 1)
+        pos_half[0] = 0.5 * grid.ddzi[0] * thickness
+        for i in range(1, n - 1):
+            pos_half[i] = pos_half[i - 1] + 0.5 * (grid.ddzi[i - 1] + grid.ddzi[i]) * thickness
+        a_int = interp_profile(zz, ar, pos[None, :])[0]
+        a_half = interp_profile(zz, ar, pos_half[None, :])[0]
+        form = int(np.atleast_1d(params.lakeform)[l])
+        cell = float(np.atleast_1d(params.cellipt)[l])
+        Lx, Ly = _lxly(a_int, form, cell)
+        Lxh, Lyh = _lxly(a_half, form, cell)
+        return bathym_levels(n, area_int=a_int, area_half=a_half,
+                             Lx=Lx, Ly=Ly, Lx_half=Lxh, Ly_half=Lyh)
+
+    bice = _ice_levels(float(st.l1[l]), float(st.h1[l]) + float(st.l1[l]) + float(st.ls1[l]))
+    bdice = _ice_levels(float(st.ls1[l]), float(st.ls1[l]))
     z_half = grid.dzeta_05int * h1
     return SoilGeometry(
         M=params.M, Mice=params.Mice, zsoilcols=np.r_[0, zsc],
         ddz=np.r_[0, grid.ddz], ddzi=np.r_[0, grid.ddzi],
         ddz05=grid.ddz05, ddzi05=grid.ddzi05, z_half=np.r_[0, z_half],
-        bathymwater=bwater, bathymice=bice, bathymdice=bice, bathymsoil=bs)
+        bathymwater=bwater, bathymice=bice, bathymdice=bdice, bathymsoil=bs)
 
 
 def build_step_state(params, grid, l=0):
