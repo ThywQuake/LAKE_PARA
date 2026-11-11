@@ -77,3 +77,11 @@ Parity vs NumPy `step_case1`/`run_case1` on `summer1d`:
 Heavy compile tests are marked `slow` (the coupled step compiles to several GB
 per signature); run them individually, e.g.
 `pytest -q tests/test_jaxbatch_step.py::test_one_step_matches_numpy_L1`.
+
+## B5 deployment (2026-11-11)
+
+`tools/ref/run_jax_case.py CASE DAYS` runs a case-1 reference case entirely
+with the JAX step (daily `lax.scan` chunks, no NumPy physics).  `summer1d`,
+one day: max |dT| vs the Fortran reference 3.8e-4 K (NumPy path 3.7e-4 K),
+`h1` agrees to 6e-11 m.  `run_case1_jax` now accepts `nstep0`/`first` so the
+daily chunks keep the forcing clock and the first-call branch correct.

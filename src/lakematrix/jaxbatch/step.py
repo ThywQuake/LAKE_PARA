@@ -832,7 +832,7 @@ def step_case1_jax(state, params, rows, nstep=1, first=None):
     return new
 
 
-def run_case1_jax(params, rows, nsteps, state=None):
+def run_case1_jax(params, rows, nsteps, state=None, nstep0=1, first=True):
     """Run ``nsteps`` case-1 steps, ``lax.scan``-ing over the state dict.
 
     The first step is evaluated separately (its ``T_SOLVER`` start-up branch is
@@ -852,10 +852,10 @@ def run_case1_jax(params, rows, nsteps, state=None):
     params = {**params, "rows": rows}
     fn, _stat = _compiled(params)
     _stat, dyn = _split(params)
-    dyn1 = {**dyn, "first": jnp.asarray(True)}
+    dyn1 = {**dyn, "first": jnp.asarray(bool(first))}
     dyn2 = {**dyn, "first": jnp.asarray(False)}
 
-    state, d0 = fn(state, dyn1, jnp.asarray(1.0))
+    state, d0 = fn(state, dyn1, jnp.asarray(float(nstep0)))
     _check_state(state_in, state)
     if nsteps == 1:
         return state, jax.tree_util.tree_map(lambda x: x[None], d0)
@@ -863,8 +863,9 @@ def run_case1_jax(params, rows, nsteps, state=None):
     def body(carry, nstep):
         return fn(carry, dyn2, nstep)
 
-    state, rest = jax.lax.scan(body, state,
-                               jnp.arange(2, nsteps + 1, dtype=jnp.float64))
+    state, rest = jax.lax.scan(
+        body, state,
+        jnp.arange(nstep0 + 1, nstep0 + nsteps, dtype=jnp.float64))
     _check_state(state_in, state)
     diags = jax.tree_util.tree_map(
         lambda a, b: jnp.concatenate((a[None], b), axis=0), d0, rest)
