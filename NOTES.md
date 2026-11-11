@@ -862,5 +862,5 @@ the quantities are still from another stage.  Exact step-level acceptance
 cannot be driven from these tags; a Fortran-side print *inside* the case-1
 block (before/after `dhw` assignment) would be needed.
 
-The v1 code currently keeps `dhwtrib=0` (no tributaries), `dhw` before soil,
-and is otherwise bit-exact at step 1/2.
+The v1 code currently keeps the Fortran `dhwtrib=(h10-h1)/10` relaxation
+active, `dhw` before soil, and is otherwise bit-exact at step 1/2.
