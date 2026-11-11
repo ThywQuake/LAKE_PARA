@@ -287,6 +287,14 @@ def patch_tdiff(path):
                    "pt_down_f", "lamsoil", "csoil", "rosoil", "dzs"))
     s = s[:pos] + ('\n  call LM_PROBE("TD_in", "RadWater_integr", RadWater%integr)\n'
                    '  call LM_PROBE("TD_in", "lsh_water", lsh%water(1:M+1))\n') + ins + s[pos:]
+    # coefficient probe at the water+soil solve
+    key = "call PROGONKA (nveclen,a,b,c,d,Temp,1,M+ns)"
+    pos = s.index(key) + len(key)
+    s = s[:pos] + ('\n  call LM_PROBE("TD2", "a", a(1:M+ns))\n'
+                   '  call LM_PROBE("TD2", "b", b(1:M+ns))\n'
+                   '  call LM_PROBE("TD2", "c", c(1:M+ns))\n'
+                   '  call LM_PROBE("TD2", "d", d(1:M+ns))\n'
+                   '  call LM_PROBE("TD2", "Temp", Temp(1:M+ns))\n') + s[pos:]
     anchor2 = "  else ! There is no snow, ice and water: only soil exists"
     pos2 = s.index(anchor2)
     outs = ('  call LM_PROBE("TD_out", "Tw2", Tw2)\n'

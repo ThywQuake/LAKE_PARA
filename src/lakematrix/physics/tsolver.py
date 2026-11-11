@@ -10,6 +10,8 @@ keep the coefficient indexing readable.
 
 import numpy as np
 
+LAST_COEFS = {}
+
 from ..constants import C
 
 
@@ -116,6 +118,8 @@ def t_diff_water(Tsurf, dt, Tw1, Tsoil1, lamw, area_int, area_half, h1, ddz,
     d[M + ns] = -soilbotflx * dzs[ns - 1] / (lamsoil[ns - 1] + lamsoil[ns])
 
     Temp = _progonka_1based(a, b, c, d, nn)
+    LAST_COEFS.update(a=a.copy(), b=b.copy(), c=c.copy(), d=d.copy(),
+                      Temp=Temp.copy())
     return Temp[1:M + 2], Temp[M + 1:M + ns + 1]
 
 

@@ -908,3 +908,18 @@ At step 3, after `SOILCOLSTEMP`:
 So the remaining step-3 soil error is inside `T_DIFF`'s water-soil interface /
 soil solve with exact coefficients and exact `Tsoil1/Tw1`.  Next compare the
 `T_DIFF` coefficients (`a,b,c,d`) at the interface with an in-block probe.
+
+## M3: step-3 T_DIFF coefficients
+
+Final `T_DIFF` coefficients at step 3 (last `TD2` record):
+
+- `a` 3.6e-6 relative, `b` 6e-7, `c` 6e-6, `d` 6e-6;
+- `Temp` (`Tw1/Tsoil2`) 5.2e-7 K;
+- mismatch concentrated at the interface index M+1.
+
+The 5e-7 K `Temp` is consistent with a **different T_SOLVER convergence path**
+(`resid=1 W/m2`, Chorde stop criterion) rather than a formula error: a 1 W/m2
+residual corresponds to ~1e-4 K, and our `HEATBALANCE` matches to 5e-14, not
+bitwise.  The plan's 1e-10 step tolerance is below this convergence noise.
+Next: compare the step-3 `Tsurf3` iteration sequence (`iter`, `Bal3`) and/or
+tighten the convergence criterion to test this hypothesis.
