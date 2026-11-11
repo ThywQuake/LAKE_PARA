@@ -303,6 +303,8 @@ def _phase_iterate(wl3, wi1, Tsoil2, Sals1, por, rosdry, dzss, wlm0, wlm7,
     T3 = jnp.zeros_like(wl3)
     done = jnp.zeros((L,), dtype=bool)
     weights = jnp.asarray((0.0,) + _ALP)
+    # Level 0 is the Fortran pad; the reference only relaxes 1..ns.
+    level = (jnp.arange(wl3.shape[1]) > 0)[None, :]
 
     def body(k, carry):
         wl3, wi1, Tsoil2, wl4, wi2, T3, done = carry
@@ -318,7 +320,7 @@ def _phase_iterate(wl3, wi1, Tsoil2, Sals1, por, rosdry, dzss, wlm0, wlm7,
                                      nmeltpoint))
         relax = (~done) & (max1 > _S001) & (k < 20)
         w = weights[k % 8 + 1]
-        rmask = relax[:, None]
+        rmask = relax[:, None] & level
         wl3 = jnp.where(rmask, wl3 + w * (wl4 - wl3), wl3)
         wi1 = jnp.where(rmask, wi1 + w * (wi2 - wi1), wi1)
         Tsoil2 = jnp.where(rmask, Tsoil2 + w * (T3 - Tsoil2), Tsoil2)
@@ -410,7 +412,9 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
         * rosdry[1] * (1.0 - por[1]) / C.row0 * dt)
 
     # --- Step 2: gravitational infiltration (soil_mod.f90:375-434) ---------
-    wl3 = z2
+    # The pad (level 0) is never written by the reference; keep the incoming
+    # value there while all physical levels 1..ns are overwritten below.
+    wl3 = _get(state, "wl3", z2)
     for i in range(2, ns):
         wl3 = wl3.at[:, i].set(
             wl2[:, i] + dt * (filtr[:, i - 1] - filtr[:, i]) / dzss[i])
@@ -428,6 +432,15 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
     wl3, wi1_is, Tsoil2, wl4_is, wi2_is, Tsoil3_is = _phase_iterate(
         wl3, wi1_is, Tsoil2, Sals_is, por, rosdry, dzss, wlm0, wlm7,
         pressoil, csoil, rosoil, nmeltpoint)
+
+    # The reference only writes levels 1..ns, so the pad (level 0) of the
+    # phase-change outputs keeps the incoming state's value.
+    def keep_pad(new, old):
+        return jnp.concatenate((old[:, :1], new[:, 1:]), axis=-1)
+
+    wl4_is = keep_pad(wl4_is, wl4[:, :, is_])
+    wi2_is = keep_pad(wi2_is, wi2[:, :, is_])
+    Tsoil3_is = keep_pad(Tsoil3_is, Tsoil3[:, :, is_])
 
     # Negative ice content: return it to liquid water (mhsep = 1).
     neg = wi2_is < 0.0
