@@ -1159,6 +1159,6 @@ were replaced in plan §5 (en/zh) by chaos-aware criteria: daily pointwise
 ice/snow thickness ≤ 0.3 m at 425 days.  Translation correctness continues to
 be enforced by the step-level probes and the ≤1-day checks.
 
-The 60-day `summer60d` run now passes the revised criteria (0.35/0.074/0.051).
+The 60-day `summer60d` run passes the revised criteria: 0.349 K pointwise, 0.054 K time-mean bias, 0.071 K profile RMSE (all thresholds 0.5/0.1/0.15).
 The four 425-day Python runs are in progress; the Fortran 1-ULP spread is the
 reference for judging them.

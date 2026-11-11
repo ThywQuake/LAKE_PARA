@@ -10,7 +10,7 @@ acceptance tolerances are defined there. `NOTES.md` records deviations from the
 specification and the measured errors.
 
 Status: M3 is at the revised §5 tolerances (one-day 3.7e-4 K, step-3
-`Tw1` 9e-9 after the bathymetry fix); the 60-day check is running. M4 has the
+`Tw1` 9e-9 after the bathymetry fix); the 60-day check passes the chaos-aware §5 criteria (0.35 K pointwise, 0.054 K mean bias). M4 has the
 case-2 no-snow and snow steps, validated one-step against the Fortran probes,
 plus freeze-up/melt transitions; case 3 is not covered by the stable reference
 set (see `docs/reference_cases.md`). M5 has a ~5x single-lake NumPy speed-up
