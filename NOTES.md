@@ -1162,3 +1162,15 @@ be enforced by the step-level probes and the ≤1-day checks.
 The 60-day `summer60d` run passes the revised criteria: 0.349 K pointwise, 0.054 K time-mean bias, 0.071 K profile RMSE (all thresholds 0.5/0.1/0.15).
 The four 425-day Python runs are in progress; the Fortran 1-ULP spread is the
 reference for judging them.
+
+## M4: long-run stability and the T_SOLVER fallback
+
+The first `cold425d` Python run aborted at day ~217 with
+`T_SOLVER scan exceeded 80 C and no templin`.  The Fortran falls back to
+`TEMPLINHEATBALEQ` (a linearised surface balance) in that branch; that
+function is not ported.  A provisional fallback now re-evaluates the heat
+balance at the previous surface temperature (clipped to [-90, 60] C) instead
+of aborting, and warns.  This keeps long runs finite; it must be replaced by
+the exact linearised balance before the fallback is relied on.  The
+`full425d` run passed freeze-up and melt with the earlier code; the fixed
+`cold425d` run (`scratch/cold425d_v2.log`) restarts with this fallback.
