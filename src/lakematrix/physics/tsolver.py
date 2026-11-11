@@ -151,10 +151,23 @@ def t_solver(fn, nstep, surftyp, surftyp_prev, Tsurf_prev, maxiter=20,
         Bal2, state2 = fn(Tsurf2)
         if Tsurf2 > 80.0:
             if templin is None:
-                raise RuntimeError("T_SOLVER scan exceeded 80 C and no templin")
-            Tsurf3 = templin(Tsurf_prev)
-            state3 = state2
-            iterate = False
+                # The Fortran uses TEMPLINHEATBALEQ here.  Until that
+                # linearised balance is ported, fall back to the previous
+                # surface temperature (clipped to the physical range) and
+                # continue with a finite state instead of aborting the run.
+                import warnings
+                warnings.warn("T_SOLVER scan exceeded 80 C; using the "
+                              "previous surface temperature (templin TODO)")
+                Tsurf3 = float(Tsurf_prev)
+                if not np.isfinite(Tsurf3):
+                    Tsurf3 = 0.0
+                Tsurf3 = float(np.clip(Tsurf3, -90.0, 60.0))
+                Bal3, state3 = fn(Tsurf3)
+                iterate = False
+            else:
+                Tsurf3 = templin(Tsurf_prev)
+                state3 = state2
+                iterate = False
 
     it = 0
     Bal3 = resid + 1.0
