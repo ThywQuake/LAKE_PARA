@@ -1,8 +1,8 @@
 # lakematrix — progress snapshot (2026-11-11)
 
 This file is the hand-off note for moving development to another machine.
-Authoritative plan: `../LAKEMATRIX-PLAN.en.md` (English) and
-`../LAKEMATRIX-PLAN.md` (Chinese).
+Authoritative plan: `LAKEMATRIX-PLAN.en.md` (English) and
+`LAKEMATRIX-PLAN.md` (Chinese).
 
 ## Current commit
 
