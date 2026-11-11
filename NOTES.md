@@ -880,3 +880,17 @@ Probes inserted **immediately after** `dhw0 = dhwp + dhwe` in case 1:
 So the earlier `LAKE_entry/LAKE_exit` values were stale; the actual formula is
 `dhw = dhw0 + dhwfsoil + dhwtrib`, with `dhwtrib` active from step 3.  Our
 current `step.py` matches this formula.
+
+## M3: step-3 soil divergence
+
+At step 3, after `SOILCOLSTEMP`:
+
+- `Tsoil1` diff 2.84e-4, `Tsoil2` 5.58e-6, `dhwfsoil` exact;
+- after `SOILFORLAKE`: `Tsoil2` 1.8e-10, `Tsoil1` still 2.84e-4.
+
+So the soil **temperature** handed to `SOILFORLAKE` (`Tsoil2`) is already 5.6e-6
+off; the moisture/phase update then maps it to a 2.8e-4 `Tsoil1` error.
+`dhwfsoil` remains exact.
+
+Next: compare `wl1/wi1/csoil/rosoil/lamsoil` at step 3 against the SOILF probe
+to find why `Tsoil2` (from `T_SOLVER`) differs despite exact `Tsoil1`/`Tw1`.
