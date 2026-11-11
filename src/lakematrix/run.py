@@ -22,6 +22,14 @@ def _grid(case):
                        case.soil_depth, 0.02)
 
 
+def _depth_profile(profile, z_l, depth):
+    out = np.full(len(depth), np.nan)
+    ok = depth <= z_l[-1]
+    if np.any(ok):
+        out[ok] = np.interp(depth[ok], z_l, profile)
+    return out
+
+
 def run_batch(case_dirs, days, meteo_paths=None, callback=None,
               out_depth=None):
     """Run several case directories for `days`; return stacked profiles.
@@ -47,8 +55,25 @@ def run_batch(case_dirs, days, meteo_paths=None, callback=None,
         if n % every == 0 or n == nsteps:
             st = [ss.state for ss in models]
             times.append(n * cases[0].dt / 86400.0)
+            if out_depth is None:
+                wz = [np.stack([s.Tw1[0] for s in st])]
+                uz = [np.stack([np.asarray(ss.mom.u1) for ss in models])]
+                vz = [np.stack([np.asarray(ss.mom.v1) for ss in models])]
+                ez = [np.stack([s.E[0] for s in st])]
+                qz = [np.stack([s.eps[0] for s in st])]
+            else:
+                def prof(get):
+                    return np.stack([
+                        _depth_profile(get(ss, s),
+                                       g.dzeta_int * float(s.h1[0]), out_depth)
+                        for ss, s, g in zip(models, st, grids)])
+                wz = [prof(lambda ss, s: s.Tw1[0])]
+                uz = [prof(lambda ss, s: np.asarray(ss.mom.u1))]
+                vz = [prof(lambda ss, s: np.asarray(ss.mom.v1))]
+                ez = [prof(lambda ss, s: s.E[0])]
+                qz = [prof(lambda ss, s: s.eps[0])]
             rec.append(dict(
-                water_temp=np.stack([s.Tw1[0] for s in st]),
+                water_temp=wz[0],
                 soil_temp=np.stack([s.Tsoil1[0] for s in st]),
                 ice_temp=np.stack([s.Ti1[0] for s in st]),
                 h_water=np.array([float(s.h1[0]) for s in st]),
@@ -56,10 +81,7 @@ def run_batch(case_dirs, days, meteo_paths=None, callback=None,
                 h_snow=np.array([float(s.hs1[0]) for s in st]),
                 snowmass=np.array([float(s.snowmass[0]) for s in st]),
                 layer_case=np.array([int(s.layer_case[0]) for s in st]),
-                u=np.stack([np.asarray(ss.mom.u1) for ss in models]),
-                v=np.stack([np.asarray(ss.mom.v1) for ss in models]),
-                tke=np.stack([s.E[0] for s in st]),
-                epsilon=np.stack([s.eps[0] for s in st]),
+                u=uz[0], v=vz[0], tke=ez[0], epsilon=qz[0],
                 t_surface=np.array([float(ss.Tsurf_prev) for ss in models]),
             ))
             if callback is not None:

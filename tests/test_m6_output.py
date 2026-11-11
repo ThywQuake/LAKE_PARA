@@ -34,3 +34,16 @@ def test_run_batch_single_and_two_lakes():
                                rtol=0, atol=0)
     np.testing.assert_allclose(d2["water_temp"][1], d1["water_temp"][0],
                                rtol=0, atol=0)
+
+
+def test_run_batch_different_depths_are_independent():
+    import numpy as np
+    from lakematrix.run import run_batch
+
+    cases = [ROOT / "ref/v1/full425d", ROOT / "ref/v1/shallow425d"]
+    dep = np.arange(0, 24.01, 1.0)
+    d = run_batch(cases, 0.002, out_depth=dep)
+    for i, case in enumerate(cases):
+        one = run_batch([case], 0.002, out_depth=dep)
+        np.testing.assert_allclose(d["water_temp"][i], one["water_temp"][0],
+                                   rtol=0, atol=0, equal_nan=True)
