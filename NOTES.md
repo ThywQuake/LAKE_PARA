@@ -894,3 +894,17 @@ off; the moisture/phase update then maps it to a 2.8e-4 `Tsoil1` error.
 
 Next: compare `wl1/wi1/csoil/rosoil/lamsoil` at step 3 against the SOILF probe
 to find why `Tsoil2` (from `T_SOLVER`) differs despite exact `Tsoil1`/`Tw1`.
+
+## M3: step-3 soil inputs are exact except Tsoil2
+
+At step 3, after `SOILCOLSTEMP`:
+
+- `wl1`, `wi1`, `csoil`, `rosoil`, `lamsoil` all **0.0** vs `SOILF_in`;
+- `RadWater%integr` **0.0**;
+- `Tsoil2` compared before `T_SOLVER` is the side column, not the deepest
+  (invalid comparison); the deepest `Tsoil2` handed to `SOILFORLAKE` is
+  5.6e-6 K off and yields the 2.8e-4 `Tsoil1` difference.
+
+So the remaining step-3 soil error is inside `T_DIFF`'s water-soil interface /
+soil solve with exact coefficients and exact `Tsoil1/Tw1`.  Next compare the
+`T_DIFF` coefficients (`a,b,c,d`) at the interface with an in-block probe.

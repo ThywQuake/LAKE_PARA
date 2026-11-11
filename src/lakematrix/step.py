@@ -229,7 +229,11 @@ def step_case1_to_solver(ss, params, grid, rows, nstep=1, l=0, init_step=False):
                          Tsoil2=ss.soil.Tsoil2.copy(),
                          dhwfsoil=float(ss.soil.dhwfsoil),
                          h1=float(st.h1[l]), dhw=float(dhw),
-                         dhw0=float(dhw0), Elatent=float(ss.Elatent))
+                         dhw0=float(dhw0), Elatent=float(ss.Elatent),
+                         wl1=ss.soil.wl1.copy(), wi1=ss.soil.wi1.copy(),
+                         csoil=ss.soil.csoil.copy(), rosoil=ss.soil.rosoil.copy(),
+                         lamsoil=ss.soil.lamsoil.copy(),
+                         radwater=np.array(integr, copy=True))
 
     # momentum
     ss.mom_params.uwind = float(uwind)
