@@ -139,3 +139,19 @@ def test_step_any_freezes_surface_water():
     r = step_any(ss, case, grid, rows, 1, nstep0=1)
     assert ss.state.layer_case[0] == 2
     assert r["l1"] > 0.0
+
+
+def test_snow_zero_layer_guard():
+    from lakematrix.physics.ice import (diff_coef_snow, make_ice_state,
+                                        snow_cond_heat_coef)
+    st = make_ice_state(40, 10, 10, 100)
+    st.flag_snow_init = 0
+    st.itop = 98
+    st.dens[98] = 0.0
+    st.dz[98] = 0.0
+    st.wl[98] = 0.0
+    snow_cond_heat_coef(st, 0.0)
+    assert np.all(np.isfinite(st.cs[98:100]))
+    a = np.zeros(101); b = np.zeros(101); c = np.zeros(101); d = np.zeros(101)
+    diff_coef_snow(a, b, c, d, 1, 1, 1, 1, 20.0, st)
+    assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
