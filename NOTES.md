@@ -1217,3 +1217,12 @@ Deployed before further long-run validation:
 - Step-1/2/3 probe differences are unchanged (3.5e-13 / 1.0e-10 / 8.97e-9);
   the one-day `summer1d` error is 5.3e-4 K, still inside the Fortran 1-ULP
   spread.
+
+## Acceleration phase 1.1: vectorised diffusion coefficients, batch checkpoints
+
+`diff_coef_water` and `diff_coef_soil` now fill the tridiagonal arrays with
+NumPy slices instead of per-level Python loops; step-1/2/3 probe differences
+are unchanged.  `run_batch`/`cli batch` accept `--ckpt`/`--resume` and save a
+pickled checkpoint at every output day; resuming a two-lake batch reproduces
+the uninterrupted final state (the earlier apparent mismatch was only an
+indexing error in the comparison: `water_temp` is `(lake, time, z)`).

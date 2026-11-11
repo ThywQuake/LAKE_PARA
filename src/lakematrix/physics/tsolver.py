@@ -33,20 +33,20 @@ def _progonka_1based(a, b, c, d, n):
 def diff_coef_soil(a, b, c, d, n0, n1, m0, m1, dt, lamsoil, csoil, rosoil,
                    dzs, Tsoil1, isoilcol):
     dt_inv = 1.0 / dt
-    for i in range(m0, m1 + 1):
-        j = i - m0 + n0
-        lam2 = 0.5 * (lamsoil[j] + lamsoil[j + 1])
-        lam1 = 0.5 * (lamsoil[j - 1] + lamsoil[j])
-        dzmean = 0.5 * (dzs[j - 1] + dzs[j])
-        ai = -0.5 * lam1 / dzs[j - 1]
-        bi = -0.5 * lam2 / dzs[j]
-        a[i] = ai
-        b[i] = bi
-        c[i] = ai + bi - dt_inv * (csoil[j] * rosoil[j] * dzmean)
-        d[i] = (-Tsoil1[j, isoilcol] * dt_inv * (csoil[j] * rosoil[j] * dzmean)
-                + ai * Tsoil1[j - 1, isoilcol]
-                - (ai + bi) * Tsoil1[j, isoilcol]
-                + bi * Tsoil1[j + 1, isoilcol])
+    i = np.arange(m0, m1 + 1)
+    j = i - m0 + n0
+    lam2 = 0.5 * (lamsoil[j] + lamsoil[j + 1])
+    lam1 = 0.5 * (lamsoil[j - 1] + lamsoil[j])
+    dzmean = 0.5 * (dzs[j - 1] + dzs[j])
+    ai = -0.5 * lam1 / dzs[j - 1]
+    bi = -0.5 * lam2 / dzs[j]
+    a[i] = ai
+    b[i] = bi
+    c[i] = ai + bi - dt_inv * (csoil[j] * rosoil[j] * dzmean)
+    d[i] = (-Tsoil1[j, isoilcol] * dt_inv * (csoil[j] * rosoil[j] * dzmean)
+            + ai * Tsoil1[j - 1, isoilcol]
+            - (ai + bi) * Tsoil1[j, isoilcol]
+            + bi * Tsoil1[j + 1, isoilcol])
 
 
 def diff_coef_water(a, b, c, d, n0, n1, m0, m1, dt, Tw1, lamw, area_int,
@@ -55,25 +55,25 @@ def diff_coef_water(a, b, c, d, n0, n1, m0, m1, dt, Tw1, lamw, area_int,
     dt_inv = 1.0 / dt
     dt_inv05 = 0.5 * dt_inv
     cw = C.cw_m_row0
-    for i in range(m0, m1 + 1):
-        j = i - m0 + n0
-        aa = 0.5 * (-area_half[j - 1] * lamw[j - 1] / (ddz[j - 1] * h1 * area_int[j])
-                    + cw * dhw * dzeta_int[j] * dt_inv05
-                    - cw * dhw0 * dt_inv05)
-        a[i] = aa + cw * 0.5 * PEMF[j - 1]
-        bb = 0.5 * (-area_half[j] * lamw[j] / (ddz[j] * h1 * area_int[j])
-                    - cw * dhw * dzeta_int[j] * dt_inv05
-                    + cw * dhw0 * dt_inv05)
-        b[i] = bb - cw * 0.5 * PEMF[j]
-        c[i] = (aa + bb - dt_inv * ddz05[j - 1] * h1 * cw
-                + cw * 0.5 * (PEMF[j] - PEMF[j - 1]))
-        d[i] = (-Tw1[j] * dt_inv * ddz05[j - 1] * h1 * cw
-                + (area_half[j] * rad_integr[j] - area_half[j - 1] * rad_integr[j - 1]) / area_int[j]
-                - cw * PEMF[j - 1] * pt_down_f[j - 1]
-                + cw * PEMF[j] * pt_down_f[j]
-                + aa * Tw1[j - 1] + bb * Tw1[j + 1]
-                - (aa + bb) * Tw1[j]
-                - lsh_water[j] * ddz05[j - 1] * h1)
+    i = np.arange(m0, m1 + 1)
+    j = i - m0 + n0
+    aa = 0.5 * (-area_half[j - 1] * lamw[j - 1] / (ddz[j - 1] * h1 * area_int[j])
+                + cw * dhw * dzeta_int[j] * dt_inv05
+                - cw * dhw0 * dt_inv05)
+    a[i] = aa + cw * 0.5 * PEMF[j - 1]
+    bb = 0.5 * (-area_half[j] * lamw[j] / (ddz[j] * h1 * area_int[j])
+                - cw * dhw * dzeta_int[j] * dt_inv05
+                + cw * dhw0 * dt_inv05)
+    b[i] = bb - cw * 0.5 * PEMF[j]
+    c[i] = (aa + bb - dt_inv * ddz05[j - 1] * h1 * cw
+            + cw * 0.5 * (PEMF[j] - PEMF[j - 1]))
+    d[i] = (-Tw1[j] * dt_inv * ddz05[j - 1] * h1 * cw
+            + (area_half[j] * rad_integr[j] - area_half[j - 1] * rad_integr[j - 1]) / area_int[j]
+            - cw * PEMF[j - 1] * pt_down_f[j - 1]
+            + cw * PEMF[j] * pt_down_f[j]
+            + aa * Tw1[j - 1] + bb * Tw1[j + 1]
+            - (aa + bb) * Tw1[j]
+            - lsh_water[j] * ddz05[j - 1] * h1)
 
 
 def t_diff_water(Tsurf, dt, Tw1, Tsoil1, lamw, area_int, area_half, h1, ddz,

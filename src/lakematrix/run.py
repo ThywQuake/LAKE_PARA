@@ -31,7 +31,7 @@ def _depth_profile(profile, z_l, depth):
 
 
 def run_batch(case_dirs, days, meteo_paths=None, callback=None,
-              out_depth=None):
+              out_depth=None, ckpt=None, resume=False):
     """Run several case directories for `days`; return stacked profiles.
 
     Returns ``dict`` with ``time`` (days), ``z`` (m), and arrays
@@ -44,12 +44,31 @@ def run_batch(case_dirs, days, meteo_paths=None, callback=None,
     rows = [read_ascii(p) for p in meteo_paths]
     grids = [_grid(c) for c in cases]
     from .step import build_step_state
-    models = [build_step_state(c, g) for c, g in zip(cases, grids)]
     nsteps = int(round(days * 86400.0 / cases[0].dt))
     every = int(round(86400.0 / cases[0].dt))
+    start = 1
     times, rec = [], []
+    if ckpt is not None and resume and Path(ckpt).exists():
+        import pickle
+        with Path(ckpt).open("rb") as fh:
+            ck = pickle.load(fh)
+        models, start, times, rec = ck["models"], ck["n"] + 1, ck["times"], ck["rec"]
+    else:
+        models = [build_step_state(c, g) for c, g in zip(cases, grids)]
 
-    for n in range(1, nsteps + 1):
+    def _checkpoint(n):
+        if ckpt is None:
+            return
+        import pickle
+        p = Path(ckpt)
+        tmp = p.with_suffix(".tmp")
+        with tmp.open("wb") as fh:
+            pickle.dump(dict(models=models, n=n, times=times, rec=rec), fh,
+                        protocol=4)
+        import os
+        os.replace(tmp, p)
+
+    for n in range(start, nsteps + 1):
         for l, (case, grid, ss) in enumerate(zip(cases, grids, models)):
             step_any(ss, case, grid, rows[l], n, l=0, nstep0=1)
         if n % every == 0 or n == nsteps:
@@ -84,6 +103,7 @@ def run_batch(case_dirs, days, meteo_paths=None, callback=None,
                 u=uz[0], v=vz[0], tke=ez[0], epsilon=qz[0],
                 t_surface=np.array([float(ss.Tsurf_prev) for ss in models]),
             ))
+            _checkpoint(n)
             if callback is not None:
                 callback(n, models, rec[-1])
 

@@ -37,6 +37,8 @@ def main(argv=None):
     b.add_argument("--days", type=float, default=1.0)
     b.add_argument("--meteo", nargs="*", default=None)
     b.add_argument("--jobs", type=int, default=1)
+    b.add_argument("--ckpt", default=None)
+    b.add_argument("--resume", action="store_true")
     b.add_argument("--out", default="results.nc")
     a = p.parse_args(argv)
 
@@ -46,7 +48,8 @@ def main(argv=None):
             data = run_batch_parallel(a.cases, a.days, meteo_paths=a.meteo,
                                       jobs=a.jobs)
         else:
-            data = run_batch(a.cases, a.days, meteo_paths=a.meteo)
+            data = run_batch(a.cases, a.days, meteo_paths=a.meteo,
+                             ckpt=a.ckpt, resume=a.resume)
         out = save_netcdf(a.out, data, names=a.cases)
         print(out)
         return
