@@ -793,3 +793,17 @@ the first non-bit-identical quantity, rather than more long runs.
   but the model's step-3 `dhw` implies -0.0001377, so the `dhwfsoil`
   accumulation/overwrite order between side columns and the deepest
   `SOILFORLAKE` still needs to be aligned.
+
+## M3: step-3 root is Tsoil2/dhwfsoil timing
+
+At step 2 our `Tw1` matches to 7e-10, but the `Tsoil2` handed to
+`SOILFORLAKE` differs by **3.1e-5 K**, and the resulting `dhwfsoil` differs by
+~2e-5 m.  That `dhwfsoil` is what enters step-3 `dhw` (`-0.0001383` in the
+probe vs `-0.0001612` in our run), producing the step-3 `h1` offset and the
+0.005 K/day drift.
+
+The exact probe step numbering is ambiguous (`SOILF_in/out` at "step 2/3"
+appear shifted by one relative to `TD_in dhw`), so the next step is a
+**checkpoint probe harness**: record key state after each subroutine in
+`lake.f90` at a single step, and compare our `step_case1` at the same
+checkpoints.  Without that, the step-index bookkeeping dominates the debugging.
