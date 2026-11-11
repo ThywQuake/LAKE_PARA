@@ -9,4 +9,8 @@ The specification is `../LAKEMATRIX-PLAN.en.md` (authoritative) and
 acceptance tolerances are defined there. `NOTES.md` records deviations from the
 specification and the measured errors.
 
-Status: M3 in progress: `T_DIFF` and the full `HEATBALANCE`/`T_SOLVER` reproduce the step-1 probes exactly (49 calls, Tsurf3 to 1e-10). Soil/momentum/turbulence/layers next. Case 3 is not covered by the natural reference set; see `docs/reference_cases.md`.
+Status: M3 in progress (step 1/2 near bit-exact; step 3 under debug). See
+`PROGRESS.md` for the current measured errors, data locations and the resume
+checklist. M4 has the ice/snow module and surface solver but no case-2 step yet;
+M6 has NetCDF/CLI. Case 3 is not covered by the natural reference set; see
+`docs/reference_cases.md`.
