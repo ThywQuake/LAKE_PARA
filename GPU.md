@@ -44,14 +44,22 @@ takes ~15 h for 512 lakes.
 
 ## Recommended long-run strategy
 
-- **Single reference case / acceptance run:** CPU JAX
+The JAX runner advances **case 1 (open water) only**: there is no case
+selection, so it never freezes up or melts and keeps using open-water physics
+below 0 C.  Every 425-day reference case freezes, so none of them can be run
+with JAX yet.
+
+- **Acceptance runs (425 days, anything that freezes):** the NumPy driver with
+  the case transitions (`tools/ref/run_case.py`, or `lakematrix run`/`batch`),
+  not `tools/ref/run_jax_case.py`.
+- **Ice-free periods (e.g. `summer1d`, `summer60d`):** CPU JAX
   (`tools/ref/run_jax_case.py` with `.venv`, not `.venv-gpu`).  The runner
-  now uses :func:`lakematrix.jaxbatch.step.run_case1_jax_chunk`, which jits
-  the day's ``lax.scan`` once and reuses it; 10 days take ~156 s on this
-  machine (≈1.8 h for 425 days).
-- **Large ensemble:** GPU with `--lakes 512` and a chunked `lax.scan`
-  runner; do not use `run_case1_jax` from a Python day loop, because its
-  scan is traced/compiled on every call (the benchmark's `chunk` is jitted
-  as one computation).
-- The 425-day acceptance itself still needs to be run; GPU deployment is
-  ready but is not the fastest path for a single lake.
+  uses :func:`lakematrix.jaxbatch.step.run_case1_jax_chunk`, which jits the
+  day's ``lax.scan`` once and reuses it; 10 days take ~156 s on this machine.
+- **Large ensemble (ice-free):** GPU with `--lakes 512` and a chunked
+  `lax.scan` runner; do not use `run_case1_jax` from a Python day loop,
+  because its scan is traced/compiled on every call (the benchmark's `chunk`
+  is jitted as one computation).
+- The JAX path becomes usable for full-year runs once the per-lake case
+  selection and the 1->2 / 2->1 transitions are ported to JAX (plan item 3 in
+  `docs/m5_jax_plan.md`).

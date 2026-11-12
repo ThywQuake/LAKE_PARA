@@ -10,14 +10,24 @@ acceptance tolerances are defined there. `NOTES.md` records deviations from the
 specification and the measured errors.
 
 Status: M3 is at the revised §5 tolerances (one-day 3.7e-4 K, step-3
-`Tw1` 9e-9 after the bathymetry fix); the 60-day check passes the chaos-aware §5 criteria (0.35 K pointwise, 0.054 K mean bias). M4 has the
+`Tw1` 9e-9 after the bathymetry fix); the 60-day check passes the chaos-aware §5 criteria (0.263 K pointwise, 0.049 K mean bias, 0.058 K RMSE). M4 has the
 case-2 no-snow and snow steps, validated one-step against the Fortran probes,
 plus freeze-up/melt transitions; case 3 is not covered by the stable reference
 set (see `docs/reference_cases.md`). M5 has a ~5x single-lake NumPy speed-up
-(radiation); the vectorised JAX batch is still pending. M6 has
+(radiation) and a vectorised JAX step for case 1 (`jaxbatch/step.py`, 4.9x/14x/51x at
+1/8/64 lakes); JAX cases 2/3 exist as single steps, checked only against the
+NumPy port. M6 has
 `(lake, time, depth)` NetCDF output, `run`/`batch` CLI commands and a serial or
 per-process batch driver. `PROGRESS.md` has the measured errors, data locations
 and the resume checklist.
+
+**JAX runs are open-water only.** The JAX runner (`tools/ref/run_jax_case.py`,
+`run_case1_jax*`) has no case selection: it never switches from case 1 to the
+ice cases (freeze-up) or back (melt), and it does not stop when the water
+drops below freezing. Use it only for periods that stay ice-free. Runs that
+freeze, including the 425-day acceptance cases, must use the NumPy driver
+(`lakematrix run`/`batch`, `tools/ref/run_case.py`), which has the 1->2 and
+2->1 transitions (case 3 is still not ported there either).
 
 
 ## Performance (M5, partial)
