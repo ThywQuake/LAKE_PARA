@@ -896,14 +896,16 @@ def run_case1_jax_chunk(params, rows, nsteps, state=None, nstep0=1):
     key = (id(fn), nsteps)
     chunk = _CHUNK_CACHE.get(key)
     if chunk is None:
-        def scan_body(carry, steps):
+        # ``dyn`` (forcing rows, per-lake setup arrays) is an operand, not a
+        # closure: a cached chunk must not keep the arrays of its first call.
+        def scan_body(carry, dyn_c, steps):
             def body(s, n):
-                return fn(s, {**dyn, "first": jnp.asarray(False)}, n)
+                return fn(s, {**dyn_c, "first": jnp.asarray(False)}, n)
             return jax.lax.scan(body, carry, steps)[0]
 
         chunk = jax.jit(scan_body)
         _CHUNK_CACHE[key] = chunk
     steps = jnp.arange(nstep0 + 1, nstep0 + nsteps, dtype=jnp.float64)
-    state = chunk(state, steps)
+    state = chunk(state, dyn, steps)
     return state, None
 

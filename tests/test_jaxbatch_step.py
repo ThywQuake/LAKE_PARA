@@ -366,6 +366,21 @@ def test_ten_steps_match_numpy_L1(ref):
 
 
 @pytest.mark.slow
+def test_chunk_cache_uses_current_forcing(ref):
+    """A cached chunk must read the forcing of the current call."""
+    params = _params(ref)
+    hot = np.array(ref["rows"], copy=True)
+    hot[:, 0] += 15.0
+    jstep.run_case1_jax_chunk(params, ref["rows"], 5, _state(ref, 1))
+    cached, _ = jstep.run_case1_jax_chunk(params, hot, 5, _state(ref, 1))
+    jstep._CHUNK_CACHE.clear()
+    fresh, _ = jstep.run_case1_jax_chunk(params, hot, 5, _state(ref, 1))
+    for key in ("Tw1", "Tsoil1", "h1"):
+        np.testing.assert_array_equal(jstep.to_numpy(cached)[key],
+                                      jstep.to_numpy(fresh)[key], err_msg=key)
+
+
+@pytest.mark.slow
 def test_lax_scan_matches_python_loop(ref):
     """The ``lax.scan`` runner == the same steps driven from Python."""
     params = _params(ref)
