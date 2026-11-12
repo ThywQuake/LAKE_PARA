@@ -350,6 +350,18 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
     pressure = jnp.atleast_1d(jnp.asarray(params["pressure"]))[:, None]
     # params["soilbotflx"] is unused: it belongs to T_DIFF (heat diffusion).
     h1_ = jnp.atleast_1d(jnp.asarray(state["h1"]))[:, None]
+    Lh = h1_.shape[0]
+    def _lane_scalar(key):
+        a = jnp.atleast_1d(jnp.asarray(state.get(key, 0.0)))
+        return jnp.broadcast_to(a.reshape(-1)[:1] if a.size == 1 else a,
+                                (Lh,))
+    l1_ = _lane_scalar("l1")
+    ls1_ = _lane_scalar("ls1")
+    hs1_ = _lane_scalar("hs1")
+    h1f, l1f, ls1f, hs1f = h1_[:, 0], l1_, ls1_, hs1_
+    open_water = (h1f != 0.0) & (ls1f == 0.0)
+    no_water = (((l1f != 0.0) & (h1f == 0.0)) | (ls1f != 0.0)
+                | ((hs1f != 0.0) & (l1f == 0.0) & (h1f == 0.0)))
 
     Tsoil2 = jnp.asarray(Tsoil2)
     Tsoil1 = jnp.asarray(state["Tsoil1"])
@@ -382,10 +394,12 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
     b = z2
     c = z2
     d = z2
-    # Open water (h1 /= 0 and ls1 == 0): saturated top layer.
-    c = c.at[:, 1].set(1.0)
-    b = b.at[:, 1].set(0.0)
-    d = d.at[:, 1].set(wlmax1[:, 1])
+    # Open water (h1 /= 0 and ls1 == 0): saturated top layer; no water over
+    # ice/snow: zero-flux top boundary (soil_mod.f90:313-320).
+    coef_top = dt * (lammoist[:, 1] + lammoist[:, 2]) / (dzs[1] * dzs[1])
+    c = c.at[:, 1].set(jnp.where(no_water, -1.0 - coef_top, 1.0))
+    b = b.at[:, 1].set(jnp.where(no_water, -coef_top, 0.0))
+    d = d.at[:, 1].set(jnp.where(no_water, -wl1_is[:, 1], wlmax1[:, 1]))
     lammoist1_ns = 0.5 * (lammoist[:, ns - 1] + lammoist[:, ns])
     coef_ns = 2.0 * dt * lammoist1_ns / (dzs[ns - 1] * dzs[ns - 1])
     c = c.at[:, ns].set(-1.0 - coef_ns)
@@ -405,11 +419,11 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
     wl2 = jnp.concatenate((jnp.zeros((L, 1)), sol), axis=-1)
 
     lammoist1_1 = 0.5 * (lammoist[:, 1] + lammoist[:, 2])
-    dhwfsoil1 = (
+    dhwfsoil1 = jnp.where(open_water, (
         -(wl2[:, 1] * (dzs[1] / (2.0 * dt) + lammoist1_1 / dzs[1])
           - wl2[:, 2] * lammoist1_1 / dzs[1]
           - wl1_is[:, 1] * dzs[1] / (2.0 * dt))
-        * rosdry[1] * (1.0 - por[1]) / C.row0 * dt)
+        * rosdry[1] * (1.0 - por[1]) / C.row0 * dt), 0.0)
 
     # --- Step 2: gravitational infiltration (soil_mod.f90:375-434) ---------
     # The pad (level 0) is never written by the reference; keep the incoming
@@ -418,9 +432,13 @@ def _soilforlake_case1(state, params, Tsoil2, dt, is_, ns, nsoilcols,
     for i in range(2, ns):
         wl3 = wl3.at[:, i].set(
             wl2[:, i] + dt * (filtr[:, i - 1] - filtr[:, i]) / dzss[i])
-    # Open water: the top layer is kept at WL_MAX.
-    wl3 = wl3.at[:, 1].set(wlmax1[:, 1])
-    dhwfsoil2 = -filtr[:, 1] * rosdry[1] * (1.0 - por[1]) / C.row0 * dt
+    # Open water: the top layer is kept at WL_MAX.  With ice/snow and no
+    # water it gains only the gravitational flux from below (soil_mod.f90:402).
+    wl3 = wl3.at[:, 1].set(jnp.where(
+        no_water, wl2[:, 1] + dt * (-filtr[:, 1]) / dzss[1], wlmax1[:, 1]))
+    dhwfsoil2 = jnp.where(open_water,
+                          -filtr[:, 1] * rosdry[1] * (1.0 - por[1])
+                          / C.row0 * dt, 0.0)
     wl3 = wl3.at[:, ns].set(
         wl2[:, ns] + dt * (-0.0 + filtr[:, ns - 1]) / dzss[ns])
 

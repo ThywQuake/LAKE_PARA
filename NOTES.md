@@ -1250,3 +1250,24 @@ case-3 sequence using the validated kernels) and
 prototype is finite but currently differs from the NumPy synthetic reference
 (`Ti1` ~0.2 K, soil ~3 K) because it does not yet run the deepest-column
 `SOILFORLAKE`/snow tail; it is a WIP, not accepted case-3 physics.
+
+## Case 3 synthetic self-consistency (2026-xx-xx)
+
+`step_case3_jax` now matches the NumPy synthetic reference for **three
+consecutive steps** at `atol=1e-10` (`Ti1`, `Tsoil1`, `l1`, `Tsurf3`); the
+regression is `tests/test_jaxbatch_step3.py`.  This is a self-consistency
+check only — no Fortran case-3 reference exists (zero water depth segfaults
+`BATHYMETRY`).
+
+Fixes required for the match:
+
+- recompute the ice/deep-ice bathymetry for `h1=0, l1=0.2` instead of reusing
+  the case-1 geometry;
+- sync the updated `csoil`/`rosoil`/`lamsoil` from the deepest soil column
+  into the ice state before `T_DIFF`;
+- re-evaluate `T_DIFF(1, Tsurf3)` after `T_SOLVER` (the returned synthetic
+  state can be one Chorde evaluation behind the returned surface temperature);
+- carry `Ti1/Tis1/Tsoil1/Tsoil2/l1` back into the state for the next step;
+- add the ice/snow no-water top boundary to `jaxbatch.soilforlake` (zero-flux
+  instead of the open-water saturated top layer) and mask `dhwfsoil1/2` to
+  the open-water branch.

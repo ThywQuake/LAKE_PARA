@@ -141,19 +141,26 @@ def step_case3_jax(state, params, rows, nstep, first=True):
     soil["h1"] = jnp.zeros(L)
     soil["l1"] = ice["l1"]
     soil["ls1"] = jnp.zeros(L)
+    soil["hs1"] = ice["hs1"]
     soil_p = {k: p[k] for k in ("ns", "POR", "rosdry", "dzs", "dzss", "zsoil",
                                "nmeltpoint", "WLM0", "WLM7",
-                               "soilbotflx")}
+                               "soilbotflx", "BH", "DLMAX", "FLWMAX")}
     soil_p["pressure"] = pressure
     soil_p["nsoilcols"] = p["ncols"]
     soil = soilforlake(soil, soil_p,
                        ice["Tsoil2"], dt)
     ice["l1"] = ice["l1"] + ice["dhi"]
+    ice["Ti1"] = ice["Ti2"]
+    ice["Tis1"] = ice["Tis2"]
+    ice["Tsoil1"] = soil["Tsoil1"]
+    ice["Tsoil2"] = soil["Tsoil2"]
     out = dict(state)
     out["soil"] = soil
     out["ice"] = ice
     out["water"] = dict(state["water"])
+    out["water"]["l1"] = ice["l1"]
     out["water"]["Tsurf_prev"] = r["Tsurf3"]
+    out["water"]["Elatent"] = r["state"]["Elatent"]
     out["water"]["surftyp_prev"] = surftyp
     out["water"]["h1"] = jnp.zeros_like(state["water"]["h1"])
     return out

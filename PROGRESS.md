@@ -16,7 +16,7 @@ Authoritative plan: `LAKEMATRIX-PLAN.en.md` (English) and
 | M1: case-1 state, forcing, grid | done |
 | M2: bathymetry, radiation, surface fluxes, density, tridiagonal | done |
 | M3: case-1 step (`SOILFORLAKE`, `LATERHEAT`, `T_DIFF`, `T_SOLVER`, `K_EPSILON`, momentum, layers) | **done at revised §5**: 1 day 3.7e-4 K; step-3 `Tw1` 8.97e-9, `Tsoil1` 2.0e-6 after the per-step bathymetry fix; 60-day rerun in progress |
-| M4: ice/snow (cases 2/3) | **cases 1/2 done**: case-2 no-snow and snow steps (one-step probes: `Tw1` 5.5e-7 / 1.5e-6, `Tsoil1` 5.5e-7 / 7.2e-7, `Ti1` 2.3e-5 / 8.7e-6), freeze-up transition validated (`Tw1` 2.2e-8); 425-day runs: one-step probes pass, but the first full runs become NaN in the snow branch (day 98-157); zero-thickness guards added and `full425d_v2` rerunning. Case 3 has only a synthetic NumPy reference and a finite JAX prototype; not accepted |
+| M4: ice/snow (cases 2/3) | **cases 1/2 done**: case-2 no-snow and snow steps (one-step probes: `Tw1` 5.5e-7 / 1.5e-6, `Tsoil1` 5.5e-7 / 7.2e-7, `Ti1` 2.3e-5 / 8.7e-6), freeze-up transition validated (`Tw1` 2.2e-8); 425-day runs: one-step probes pass, but the first full runs become NaN in the snow branch (day 98-157); zero-thickness guards added and `full425d_v2` rerunning. Case 3 has a synthetic NumPy reference and a three-step JAX self-consistency regression; no Fortran truth |
 | M5: CPU/JAX batch performance | **case-1 done**: full JAX `step_case1` + `lax.scan`, 4.9x/14x/51x at L=1/8/64 (196/1055/3846 lake-steps/s); plus JIT `progonka`/checkpoints. Cases 2/3 batch still pending |
 | M6: NetCDF output + CLI | **partial**: `output.py`, `cli.py` (`run`/`batch`), `tools/compare.py`, `run.py` batch loop with `(lake,time,...)` NetCDF; true vectorised lake dimension pending |
 

@@ -161,6 +161,11 @@ def step_case3(ss, params, grid, rows, nstep=1, l=0):
         radice_integr=ice.rad_integr_ice)
     r = t_solver(lambda T: heatbalance_ice(T, ctx), nstep, surftyp,
                  ss.surftyp_prev, ss.Tsurf_prev)
+    # T_SOLVER's returned state can be one Chorde evaluation behind Tsurf3 in
+    # this synthetic case; re-evaluate at the returned surface temperature so
+    # the reference is exactly the state belonging to Tsurf3.
+    ice = t_diff_ice(1, r["Tsurf3"], dt, snow, 1, 0, 0,
+                     params.nsoilcols, False, ice)
     ice = t_diff_ice(0, r["Tsurf3"], dt, snow, 1, 0, 0,
                      params.nsoilcols, False, ice)
     ss.Tsurf_prev = r["Tsurf3"]
@@ -188,6 +193,13 @@ def step_case3(ss, params, grid, rows, nstep=1, l=0):
     st.itop[l] = ice.itop
     st.time[l] += dt
     st.nstep[l] = nstep
+    # carry the prognostic ice/soil fields for the next synthetic step
+    ice.l1 = st.l1[l]
+    ice.h1 = 0.0
+    ice.Ti1[1:] = st.Ti1[l]
+    ice.Tis1[1:] = st.Tis1[l]
+    ice.Tsoil1 = soil.Tsoil1
+    ice.Tsoil2 = soil.Tsoil2
     return dict(Ti1=st.Ti1[l], Tis1=st.Tis1[l], Tsoil1=st.Tsoil1[l],
                 l1=st.l1[l], h1=st.h1[l], hs1=st.hs1[l],
                 snowmass=st.snowmass[l], Tsurf3=r["Tsurf3"])
