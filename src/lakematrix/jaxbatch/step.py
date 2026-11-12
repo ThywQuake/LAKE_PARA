@@ -743,6 +743,7 @@ def _solver(first=None):
 # ---------------------------------------------------------------------------
 
 _JIT_CACHE = {}
+_CHUNK_CACHE = {}
 
 
 def _signature(state):
@@ -870,3 +871,39 @@ def run_case1_jax(params, rows, nsteps, state=None, nstep0=1, first=True):
     diags = jax.tree_util.tree_map(
         lambda a, b: jnp.concatenate((a[None], b), axis=0), d0, rest)
     return state, diags
+def run_case1_jax_chunk(params, rows, nsteps, state=None, nstep0=1):
+    """Run a fixed-size chunk with a *jitted* ``lax.scan``.
+
+    Unlike :func:`run_case1_jax`, the scan is cached across calls with the
+    same ``nsteps``/compiled step, so a day loop does not recompile the XLA
+    program for every day.  ``nstep0`` is the first step number of the chunk.
+    Returns ``(state, None)`` for compatibility with the day-loop runner.
+    """
+    nsteps = int(nsteps)
+    if nsteps < 1:
+        raise ValueError("nsteps must be >= 1")
+    state = state if state is not None else params.get("state0")
+    if state is None:
+        raise ValueError("run_case1_jax_chunk needs a state")
+    params = {**params, "rows": rows}
+    fn, _stat = _compiled(params)
+    _, dyn = _split(params)
+    first = jnp.asarray(bool(nstep0 <= 1))
+    state, _ = fn(state, {**dyn, "first": first},
+                  jnp.asarray(float(nstep0)))
+    if nsteps == 1:
+        return state, None
+    key = (id(fn), nsteps)
+    chunk = _CHUNK_CACHE.get(key)
+    if chunk is None:
+        def scan_body(carry, steps):
+            def body(s, n):
+                return fn(s, {**dyn, "first": jnp.asarray(False)}, n)
+            return jax.lax.scan(body, carry, steps)[0]
+
+        chunk = jax.jit(scan_body)
+        _CHUNK_CACHE[key] = chunk
+    steps = jnp.arange(nstep0 + 1, nstep0 + nsteps, dtype=jnp.float64)
+    state = chunk(state, steps)
+    return state, None
+

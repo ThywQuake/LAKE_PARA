@@ -45,7 +45,10 @@ takes ~15 h for 512 lakes.
 ## Recommended long-run strategy
 
 - **Single reference case / acceptance run:** CPU JAX
-  (`tools/ref/run_jax_case.py` with `.venv`, not `.venv-gpu`).
+  (`tools/ref/run_jax_case.py` with `.venv`, not `.venv-gpu`).  The runner
+  now uses :func:`lakematrix.jaxbatch.step.run_case1_jax_chunk`, which jits
+  the day's ``lax.scan`` once and reuses it; 10 days take ~156 s on this
+  machine (≈1.8 h for 425 days).
 - **Large ensemble:** GPU with `--lakes 512` and a chunked `lax.scan`
   runner; do not use `run_case1_jax` from a Python day loop, because its
   scan is traced/compiled on every call (the benchmark's `chunk` is jitted

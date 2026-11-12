@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from lakematrix.forcing import read_ascii  # noqa: E402
 from lakematrix.grid import create_grid  # noqa: E402
 from lakematrix.jaxbatch.step import (from_numpy_state, make_params,  # noqa: E402
-                                      run_case1_jax)
+                                      run_case1_jax_chunk)
 from lakematrix.setup_io import read_case  # noqa: E402
 from lakematrix.step import build_step_state  # noqa: E402
 from lakematrix.step3 import build_case3_state  # noqa: E402
@@ -43,8 +43,7 @@ def main():
         if case3:
             state = run_case3_jax(params, rows, k, state, nstep0=n + 1)
         else:
-            state, _ = run_case1_jax(params, rows, k, state, nstep0=n + 1,
-                                     first=(n == 0))
+            state, _ = run_case1_jax_chunk(params, rows, k, state, nstep0=n + 1)
         n += k
         w = state["water"]
         s = state["soil"]
