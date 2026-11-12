@@ -5,13 +5,29 @@ import jax.numpy as jnp
 
 
 def _where_state(cond, new, old):
-    out = {}
-    for k in new:
-        a, b = new[k], old[k]
-        nd = a.ndim
-        c = cond.reshape(cond.shape + (1,) * (nd - 1)) if nd > cond.ndim else cond
-        out[k] = jnp.where(c, a, b)
-    return out
+    """Per-lane select between two state trees, keeping every leaf's shape/type.
+
+    ``new``/``old`` may be nested dicts (the ice ``T_DIFF`` state of case 2 is
+    ``out["ice"]``) and may contain entries that are *not* lake arrays: the
+    shared grid metrics (``ddz``, ``ddzi``, ``ddz05`` ...), Python ints
+    (``nmeltpoint``) and ``None`` (``Radbal_surf`` of the ice branch).  Those
+    entries are identical in ``new`` and ``old`` (the kernels do not write
+    them), so the previous value is kept unchanged - which also preserves the
+    exact type the ``lax.while_loop`` carry was initialised with.
+    """
+    import jax
+
+    def one(a, b):
+        if a is None or b is None:
+            return b
+        if not (hasattr(a, "shape") and hasattr(b, "shape")):
+            return b
+        if a.ndim == 0 or a.shape[0] != cond.shape[0]:
+            return b
+        c = cond.reshape(cond.shape + (1,) * (a.ndim - 1))
+        return jnp.where(c, a, b)
+
+    return jax.tree_util.tree_map(one, new, old)
 
 
 def t_solver(fn, nstep, surftyp, surftyp_prev, Tsurf_prev, maxiter=20,

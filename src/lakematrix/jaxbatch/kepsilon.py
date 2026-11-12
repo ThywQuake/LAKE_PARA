@@ -126,6 +126,7 @@ from ..physics.kepsilon import (
     CEcoef14,
     CEcoef15,
     CEcoef16,
+    CEt0,
     CEtcoef01,
     CEtcoef02,
     CEtcoef03,
@@ -143,6 +144,8 @@ from ..physics.kepsilon import (
     sigmaE,
     sigmaeps,
 )
+from ..physics.ice import _s
+from ..physics.kepsilon import L0 as _L0
 from ..physics.tridiag import progonka_jax
 
 __all__ = ["k_epsilon", "make_kernel"]
@@ -314,8 +317,8 @@ _ARR_M1 = ("ddz", "dzeta_05int", "area_half", "lamw", "lamsal", "ddz2",
            "ddz054")
 #: per-lake scalars
 _SCAL = (
-    "h1", "dhw", "dhw0", "vol", "botar", "b0", "tau_air", "tau_wav", "tau_i",
-    "tau_gr", "uwind", "vwind", "fetch", "roughness",
+    "h1", "l1", "dhw", "dhw0", "vol", "botar", "b0", "tau_air", "tau_wav",
+    "tau_i", "tau_gr", "uwind", "vwind", "fetch", "roughness",
 )
 #: keys that the equations read -> must be supplied
 _REQUIRED = ("e1", "eps1", "tw1", "tw2", "sal1", "sal2", "u1", "v1", "u2",
@@ -427,6 +430,18 @@ def _pass(s, td, M, dt, dhw_keps, dhw0_keps, sig_eps):
     e1, eps1 = s["e1"], s["eps1"]
     e_it1, eps_it1 = e1, eps1                 # reset at the start of the pass
     e12, eps12 = e1, eps1                     # 0.5*(e1 + e_it1)
+
+    # `l1 > 0` minimal values (turb_mod.f90:340-351).  `1.E-5` is a default-real
+    # literal; `max(ddz(1:M))*h1` is the deepest cell thickness.
+    l1_ice = jnp.broadcast_to(jnp.asarray(s.get("l1", 0.0), dtype=jnp.float64),
+                              (L,))
+    h1_ = jnp.broadcast_to(jnp.asarray(s["h1"], dtype=jnp.float64), (L,))
+    max_ddz_h = jnp.max(s["ddz"][:, 1:M + 1], axis=-1) * h1_
+    eps_min_ice = (_s(1.0e-5) * (C.lamw0 / C.cw_m_row0) ** 2 * C.Racr
+                   * C.niu_wat / max_ddz_h ** 4)
+    e_min_racr = (eps_min_ice * max_ddz_h ** 2
+                  * (CEt0 * C.Racr * C.niu_wat * C.lamw0
+                     / C.cw_m_row0) ** (-0.5))
 
     ddz, ddz2, ddz054 = s["ddz"], s["ddz2"], s["ddz054"]
     ddz05 = s["ddz05"]
@@ -575,8 +590,11 @@ def _pass(s, td, M, dt, dhw_keps, dhw0_keps, sig_eps):
     y = progonka_jax(a[:, i1], b[:, i1], c[:, i1], d[:, i1], k=0, n=M - 1)
     e_it2 = z.at[:, i1].set(y)
     e_it2 = e_it2.at[:, M + 1].set(0.0)
-    # CHECK_MIN_VALUE(E_it2, M, E_min); l1 == 0 -> E_min = E_MIN_LAMW0
-    e_it2 = e_it2.at[:, i1].set(jnp.maximum(e_it2[:, i1], E_MIN_LAMW0))
+    # CHECK_MIN_VALUE(E_it2, M, E_min); E_min = E_MIN_LAMW0 (open water) or
+    # the Racr formula for an ice cover (turb_mod.f90:340-351)
+    e_min = jnp.where(l1_ice > 0.0, e_min_racr, E_MIN_LAMW0)
+    e_it2 = e_it2.at[:, i1].set(jnp.maximum(e_it2[:, i1],
+                                            e_min[:, None]))
     dE_it = jnp.max(jnp.abs(e_it1[:, 1:M + 2] - e_it2[:, 1:M + 2]), axis=-1)
 
     # -------- coefficients of the dissipation equation (Satyanarayana) ---
@@ -596,6 +614,20 @@ def _pass(s, td, M, dt, dhw_keps, dhw0_keps, sig_eps):
     Esurf1 = e_it1[:, 1] + 0.5 * FTKES * sigmaE * h1 * ddz[:, 1] / ksurf1
     const1 = CE0 ** 0.75 / (sig_eps * kar)
     FS = const1 * ksurf1 * Esurf1 ** 1.5 / (Z0 * Z0 + SMALL_NUMBER)
+
+    # Ice cover (`l1 > 0`, `kepsbc 1`): the surface dissipation flux uses the
+    # ice friction velocity; thin ice (`0 < l1 <= L0`) blends the ice and the
+    # open-water flux with `b0 = l1/L0` (turb_mod.f90:860-905).
+    if "tau_i" in s:
+        ksurf2 = jnp.maximum(NIU_WAT, ce[:, 1] * k2[:, 1]
+                             - kar * jnp.sqrt(s["tau_i"] / C.row0)
+                             * 0.5 * ddz[:, 1] * h1)
+        Esurf2 = e_it1[:, 1] + 0.5 * FTKES * sigmaE * h1 * ddz[:, 1] / ksurf2
+        FS_ice = const1 * ksurf2 * Esurf2 ** 1.5 / (Z0 * Z0 + SMALL_NUMBER)
+        b0 = s.get("b0", zL)
+        thin = (l1_ice > 0.0) & (l1_ice <= _L0)
+        FS_ice = jnp.where(thin, b0 * FS_ice + (1.0 - b0) * FS, FS_ice)
+        FS = jnp.where(l1_ice > 0.0, FS_ice, FS)
 
     ksurf2b = jnp.maximum(NIU_WAT, ce[:, M] * k2[:, M]
                           - kar * jnp.sqrt(s["tau_gr"] / C.row0)
@@ -672,8 +704,10 @@ def _pass(s, td, M, dt, dhw_keps, dhw0_keps, sig_eps):
     y = progonka_jax(a[:, i1], b[:, i1], c[:, i1], d[:, i1], k=0, n=M - 1)
     eps_it2 = z.at[:, i1].set(y)
     eps_it2 = eps_it2.at[:, M + 1].set(0.0)
-    # CHECK_MIN_VALUE(eps_it2, M, eps_min); l1 == 0 -> eps_min = EPS_MIN0
-    eps_it2 = eps_it2.at[:, i1].set(jnp.maximum(eps_it2[:, i1], EPS_MIN0))
+    # CHECK_MIN_VALUE(eps_it2, M, eps_min); EPS_MIN0 or the ice formula
+    epsi_min = jnp.where(l1_ice > 0.0, eps_min_ice, EPS_MIN0)
+    eps_it2 = eps_it2.at[:, i1].set(jnp.maximum(eps_it2[:, i1],
+                                                epsi_min[:, None]))
     deps_it = jnp.max(jnp.abs(eps_it1[:, 1:M + 2] - eps_it2[:, 1:M + 2]),
                       axis=-1)
 
@@ -724,9 +758,6 @@ def k_epsilon(state, dt, dt_keps=None, nstep_keps=None, params=None):
     """
     p = _as_params(params)
     _check_scope(p)
-    if _concrete_all(state.get("l1", 0.0), 0.0) is False:
-        raise NotImplementedError(
-            "jaxbatch.k_epsilon implements the open-water case l1 == 0 only")
     if _concrete_all(jnp.asarray(state.get("h_veg", 0.0)) <= 0.0, True) is False:
         raise NotImplementedError(
             "vegetation friction is not operational (Fortran STOP); h_veg > 0")
