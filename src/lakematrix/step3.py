@@ -9,7 +9,9 @@ case-3 sequence so the JAX case-3 step can be compared against it.
 import numpy as np
 
 from .constants import C
-from .physics.bathym import bathymetry
+from .physics.bathym import _lxly, bathymetry
+from .physics.soil import bathym_levels
+from .grid import interp_profile
 from .physics.ice import (ice_properties, make_ice_state, snow_calc,
                           snow_cond_heat_coef, sr_botsnow, t_diff_ice)
 from .physics.radiation import FRACBANDS, rad_update
@@ -17,6 +19,34 @@ from .physics.soil import (meltpnt, soil_cond_heat_coef, soilforlake)
 from .physics.surface import IceSurfaceContext, heatbalance_ice, surf_char
 from .physics.tsolver import t_solver
 from .step import build_step_state
+
+
+def _ice_bathy(params, grid, l, thickness, total):
+    n = params.Mice + 1
+    if thickness <= C.small_value:
+        area = float(np.atleast_1d(params.area_lake)[l])
+        a = np.full(n, area)
+        lx, ly = _lxly(area, int(params.lakeform[l]), float(params.cellipt[l]))
+        return bathym_levels(n, area_int=a, area_half=a[:-1],
+                             Lx=np.full(n, lx), Ly=np.full(n, ly),
+                             Lx_half=np.full(n - 1, lx),
+                             Ly_half=np.full(n - 1, ly))
+    table = params.morphometry[l, :int(params.morphometry_len[l]), :]
+    dep, ar = table[:, 0], table[:, 1]
+    zz = dep - np.max(dep) + total
+    pos = np.zeros(n)
+    for i in range(1, n):
+        pos[i] = pos[i - 1] + grid.ddzi[i - 1] * thickness
+    ph = np.zeros(n - 1)
+    ph[0] = 0.5 * grid.ddzi[0] * thickness
+    for i in range(1, n - 1):
+        ph[i] = ph[i - 1] + 0.5 * (grid.ddzi[i - 1] + grid.ddzi[i]) * thickness
+    ai = interp_profile(zz, ar, pos[None, :])[0]
+    ah = interp_profile(zz, ar, ph[None, :])[0]
+    lx, ly = _lxly(ai, int(params.lakeform[l]), float(params.cellipt[l]))
+    lxh, lyh = _lxly(ah, int(params.lakeform[l]), float(params.cellipt[l]))
+    return bathym_levels(n, area_int=ai, area_half=ah,
+                         Lx=lx, Ly=ly, Lx_half=lxh, Ly_half=lyh)
 
 
 def build_case3_state(params, grid, l=0):
@@ -48,6 +78,12 @@ def build_case3_state(params, grid, l=0):
     ss.ice.csoil = ss.soil.csoil
     ss.ice.rosoil = ss.soil.rosoil
     ss.ice.dzs = ss.soil_params.dzs
+    bice = _ice_bathy(params, grid, l, 0.2, 0.2)
+    bdice = _ice_bathy(params, grid, l, 0.0, 0.0)
+    ss.soil_geom.bathymice = bice
+    ss.soil_geom.bathymdice = bdice
+    ss.ice.bathymice = list(bice)
+    ss.ice.bathymdice = list(bdice)
     ice_properties(ss.ice)
     return ss
 
@@ -110,6 +146,10 @@ def step_case3(ss, params, grid, rows, nstep=1, l=0):
     soil.l1 = ice.l1
     soil.ls1 = 0.0
     soil_cond_heat_coef(soil, ss.soil_params, is_=params.nsoilcols)
+    ice.csoil = soil.csoil
+    ice.rosoil = soil.rosoil
+    ice.lamsoil = soil.lamsoil
+    ice.dzs = ss.soil_params.dzs
     ctx = IceSurfaceContext(
         ice=ice, snow=snow, water=0, dt=dt, fetch=fetch, uwind=uwind,
         vwind=vwind, u=0.0, v=0.0, tempair=tempair, pressure=pressure,

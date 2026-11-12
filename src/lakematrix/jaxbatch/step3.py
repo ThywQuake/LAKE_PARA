@@ -15,6 +15,7 @@ from .ice_surface import heatbalance_ice, surf_char_ice
 from .snowice import (ice_properties, ice_increments_nosnow,
                       snow_calc, snow_cond_heat_coef, sr_botsnow)
 from .soilforlake import soilforlake
+from .soil import soil_cond_heat_coef
 from .tsolver import t_solver
 from ..constants import C
 from ..physics.radiation import FRACBANDS
@@ -23,7 +24,7 @@ from ..physics.radiation import FRACBANDS
 def _radiation(ice, ex, erad):
     from .step import rad_update
     extinct = jnp.full((ice["Ti1"].shape[0], ice["ddzi"].shape[1] - 1, 4), ex)
-    _, integr = rad_update(extinct, ice["ddzi"][:, 1:] * ice["l1"][:, None],
+    _, integr = rad_update(extinct, ice["ddzi05"][:, 1:] * ice["l1"][:, None],
                            erad[:, None] * jnp.asarray(FRACBANDS)[None, :])
     return integr
 
@@ -80,7 +81,19 @@ def step_case3_jax(state, params, rows, nstep, first=True):
                        p["phi"], p["fetch"], uwind, jnp.full_like(uwind, 1e-2))
     albedo = sc["albedo"]
     ice = ice_properties(ice)
-    ice = snow_cond_heat_coef(ice, tempair)
+    # The deepest-column coefficients are updated from the current Tsoil1
+    # before T_DIFF (SOIL_COND_HEAT_COEF), exactly as in NumPy step3.
+    p_soil = {k: p[k] for k in ("ns", "POR", "rosdry", "dzs", "BH", "DLMAX",
+                                "FLWMAX")}
+    csoil, rosoil, lamsoil, _, _, _ = soil_cond_heat_coef(
+        jnp.asarray(state["soil"]["wl1"]), jnp.asarray(state["soil"]["wi1"]),
+        p["POR"], p["rosdry"], p["dzs"], p["BH"], p["DLMAX"], p["FLWMAX"],
+        p["ns"], p["ncols"])
+    ice["csoil"] = csoil
+    ice["rosoil"] = rosoil
+    ice["lamsoil"] = lamsoil
+    if bool(jnp.any(snow == 1)):
+        ice = snow_cond_heat_coef(ice, tempair)
     erad = jnp.where(snow == 1, sr_botsnow(ice, shortwave * (1 - albedo)),
                      shortwave * (1 - albedo))
     ex = jnp.asarray(p["extice"], dtype=jnp.float64)[:, None]
