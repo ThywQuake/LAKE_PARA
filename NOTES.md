@@ -1235,3 +1235,18 @@ runner.  On `summer1d`, one step and ten steps match NumPy `step_case1` at
 Python JAX loop are bit-identical.  Throughput: 196/1055/3846 lake-steps/s
 for L=1/8/64 (NumPy 40/74/75), i.e. 4.9x/14x/51x.  The heavy compile tests
 are marked `slow` because the coupled step compiles to several GB.
+
+## Case 3: synthetic reference and current status
+
+`C:\wm2-remote.zip` was extracted to `/root/wm2-remote`; it contains the
+original LAKE3.2 source and its CMakeLists, plus a wm2/tempo test — **no
+case-3 reference time series**.  Building and running the original LAKE3.2
+with `h10=0, l10=0.2` segfaults in `BATHYMETRY`, the same as the lakebatch
+build, so no Fortran case-3 state can be produced this way.
+
+For a self-consistency check I added `src/lakematrix/step3.py` (NumPy
+case-3 sequence using the validated kernels) and
+`src/lakematrix/jaxbatch/step3.py` (structural JAX prototype).  The JAX
+prototype is finite but currently differs from the NumPy synthetic reference
+(`Ti1` ~0.2 K, soil ~3 K) because it does not yet run the deepest-column
+`SOILFORLAKE`/snow tail; it is a WIP, not accepted case-3 physics.
