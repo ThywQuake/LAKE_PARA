@@ -85,3 +85,16 @@ with the JAX step (daily `lax.scan` chunks, no NumPy physics).  `summer1d`,
 one day: max |dT| vs the Fortran reference 3.8e-4 K (NumPy path 3.7e-4 K),
 `h1` agrees to 6e-11 m.  `run_case1_jax` now accepts `nstep0`/`first` so the
 daily chunks keep the forcing clock and the first-call branch correct.
+
+## Case 2 (ice over water) JAX step
+
+`src/lakematrix/jaxbatch/step2.py` assembles the full case-2 step (no-snow and
+snow) from the ice T_DIFF, snow/ice increments, ice surface, soil-column,
+momentum and k-epsilon kernels.  Against NumPy `step_case2` on a synthetic ice
+state (l1=0.2 m, L=1), one step and three chained steps agree to **0.0 K**
+(`Tw1`), **7e-15 K** (`Tsoil1`), and exactly for `l1`.  The same holds with a
+0.03 m snow pack.  `test_jaxbatch_step2.py` covers both.
+
+Case 3 (water gone, ice only) has the validated JAX `t_diff_ice` water=0
+branch, but no full-step assembly yet; the stable reference set has no case-3
+case (see `docs/reference_cases.md`).
