@@ -85,13 +85,17 @@ def step_case3_jax(state, params, rows, nstep, first=True):
     # before T_DIFF (SOIL_COND_HEAT_COEF), exactly as in NumPy step3.
     p_soil = {k: p[k] for k in ("ns", "POR", "rosdry", "dzs", "BH", "DLMAX",
                                 "FLWMAX")}
-    csoil, rosoil, lamsoil, _, _, _ = soil_cond_heat_coef(
+    csoil, rosoil, lamsoil, lammoist, filtr, wsoil = soil_cond_heat_coef(
         jnp.asarray(state["soil"]["wl1"]), jnp.asarray(state["soil"]["wi1"]),
         p["POR"], p["rosdry"], p["dzs"], p["BH"], p["DLMAX"], p["FLWMAX"],
         p["ns"], p["ncols"])
     ice["csoil"] = csoil
     ice["rosoil"] = rosoil
     ice["lamsoil"] = lamsoil
+    soil = dict(state["soil"])
+    soil["lammoist"] = lammoist
+    soil["filtr"] = filtr
+    soil["wsoil"] = wsoil
     if bool(jnp.any(snow == 1)):
         ice = snow_cond_heat_coef(ice, tempair)
     erad = jnp.where(snow == 1, sr_botsnow(ice, shortwave * (1 - albedo)),
