@@ -115,21 +115,29 @@ def soil_cond_heat_coef(wl1, wi1, POR, rosdry, dzs, BH, DLMAX, FLWMAX,
     return csoil, rosoil, lamsoil, lammoist, filtr, wsoil
 
 
-def soilcolstemp_water(state, params, geom, dt):
+def soilcolstemp_water(state, params, geom, dt, Tsoilsurf=None):
     """Traceable case-1 ``SOILCOLSTEMP`` heat pass over the side columns.
 
     Same interface and same result as
     :func:`lakematrix.jaxbatch.soilcols.soilcolstemp_water`, with the column
     loop replaced by a ``lax.scan`` and a traceable ``SOIL_COND_HEAT_COEF``.
+
+    ``Tsoilsurf`` (``(L, ncols+1)``) optionally supplies the surface
+    temperature of the side columns computed by another ``TSURFSOILCOL``
+    branch (the case-2/3 ice branches of
+    :func:`lakematrix.jaxbatch.step2.tsurfsoilcol`); when it is ``None`` the
+    water-only branch is evaluated here, as in case 1.
     """
     Tsoil1 = jnp.asarray(state["Tsoil1"])
     ns = Tsoil1.shape[-2] - 1
     ncols = Tsoil1.shape[-1] - 1
     M = jnp.asarray(geom["ddz"]).shape[-1] - 1
-    return _soilcolstemp_water(state, params, geom, dt, ns, ncols, M)
+    return _soilcolstemp_water(state, params, geom, dt, ns, ncols, M,
+                               Tsoilsurf=Tsoilsurf)
 
 
-def _soilcolstemp_water(state, params, geom, dt, ns, ncols, M):
+def _soilcolstemp_water(state, params, geom, dt, ns, ncols, M,
+                        Tsoilsurf=None):
     ns, ncols, M = int(ns), int(ncols), int(M)
     conj = int(params.get("soilcolconjtype", 2))
     if conj != 2:
@@ -160,10 +168,11 @@ def _soilcolstemp_water(state, params, geom, dt, ns, ncols, M):
     soilbotflx = params["soilbotflx"]
 
     # Tsoilsurf for the side columns, computed once before the loop.
-    Tsoilsurf = tsurfsoilcol_water(
-        Tw1, h1, geom["zsoilcols"], geom["ddz"], geom["w_lx"], geom["w_ly"],
-        geom["w_lx_half"], geom["w_ly_half"], geom["s_lx"], geom["s_ly"],
-        M, ncols)
+    if Tsoilsurf is None:
+        Tsoilsurf = tsurfsoilcol_water(
+            Tw1, h1, geom["zsoilcols"], geom["ddz"], geom["w_lx"],
+            geom["w_ly"], geom["w_lx_half"], geom["w_ly_half"],
+            geom["s_lx"], geom["s_ly"], M, ncols)
 
     if "soilflux" in state:
         soilflux = jnp.asarray(state["soilflux"])
