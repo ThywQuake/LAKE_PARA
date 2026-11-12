@@ -142,9 +142,10 @@ def run_batch_parallel(case_dirs, days, meteo_paths=None, jobs=4):
     with ProcessPoolExecutor(max_workers=jobs) as pool:
         parts = list(pool.map(_run_one, zip(case_dirs, [days] * len(case_dirs), met)))
     out = dict(parts[0])
-    for key in ("water_temp", "soil_temp", "ice_temp", "h_water", "h_ice",
-                "h_snow", "snowmass", "layer_case"):
-        out[key] = np.concatenate([p[key] for p in parts], axis=0)
+    # every field except the shared coordinates has a leading lake axis
+    for key in out:
+        if key not in ("time", "z"):
+            out[key] = np.concatenate([p[key] for p in parts], axis=0)
     return out
 
 

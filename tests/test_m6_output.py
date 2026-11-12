@@ -47,3 +47,19 @@ def test_run_batch_different_depths_are_independent():
         one = run_batch([case], 0.002, out_depth=dep)
         np.testing.assert_allclose(d["water_temp"][i], one["water_temp"][0],
                                    rtol=0, atol=0, equal_nan=True)
+
+
+def test_run_batch_parallel_matches_serial(tmp_path):
+    import numpy as np
+    import xarray as xr
+    from lakematrix.run import run_batch, run_batch_parallel, save_netcdf
+
+    cases = [ROOT / "ref/v1/summer1d", ROOT / "ref/v1/summer1d"]
+    ser = run_batch(cases, 0.005)
+    par = run_batch_parallel(cases, 0.005, jobs=2)
+    assert set(par) == set(ser)
+    for key in ser:
+        np.testing.assert_array_equal(par[key], ser[key], err_msg=key)
+    out = save_netcdf(tmp_path / "par.nc", par, names=cases)
+    with xr.open_dataset(out) as ds:
+        assert ds.sizes["lake"] == 2
