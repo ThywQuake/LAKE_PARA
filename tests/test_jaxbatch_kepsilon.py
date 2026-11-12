@@ -224,10 +224,11 @@ def test_jax_kepsilon_scope_checks(warm_case):
         with pytest.raises(NotImplementedError):
             k_epsilon(state, dt, dt, 1, KEpsilonParams(M=M, **bad))
 
+    # Ice cover is supported by the case-2 integration (l1 > 0); it must run.
     floating_ice = dict(state)
     floating_ice["l1"] = np.array([0.5])
-    with pytest.raises(NotImplementedError):
-        k_epsilon(floating_ice, dt, dt, 1, KEpsilonParams(M=M))
+    out = k_epsilon(floating_ice, dt, dt, 1, KEpsilonParams(M=M))
+    assert np.all(np.isfinite(np.asarray(out["e1"])))
 
 
 
