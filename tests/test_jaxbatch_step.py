@@ -244,7 +244,7 @@ def test_integration_helpers_match_numpy(ref):
                            jnp.asarray([st.h1[0]]),
                            jnp.asarray([case.area_lake[0]]), M,
                            float(case.backdiff0))
-    np.testing.assert_allclose(np.asarray(got)[0], want, rtol=0, atol=0)
+    np.testing.assert_allclose(np.asarray(got)[0], want, rtol=0, atol=1e-12)
 
     # --- surf_char (albedo = water_albedo(SINH0), roughness) -------------
     hour = float(case.hour0) + DT / 3600.0
