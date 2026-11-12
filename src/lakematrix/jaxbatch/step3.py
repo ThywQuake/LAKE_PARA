@@ -14,6 +14,7 @@ from .ice_tdiff import t_diff_ice
 from .ice_surface import heatbalance_ice, surf_char_ice
 from .snowice import (ice_properties, ice_increments_nosnow,
                       snow_calc, snow_cond_heat_coef, sr_botsnow)
+from .soilforlake import soilforlake
 from .tsolver import t_solver
 from ..constants import C
 from ..physics.radiation import FRACBANDS
@@ -122,8 +123,21 @@ def step_case3_jax(state, params, rows, nstep, first=True):
     ice = t_diff_ice(0, r["Tsurf3"], dt, snow, jnp.ones_like(snow),
                      jnp.zeros_like(snow), jnp.zeros_like(snow), ncols,
                      False, r["state"]["ice"])
+    soil = dict(state["soil"])
+    soil["Tsoil2"] = ice["Tsoil2"]
+    soil["h1"] = jnp.zeros(L)
+    soil["l1"] = ice["l1"]
+    soil["ls1"] = jnp.zeros(L)
+    soil_p = {k: p[k] for k in ("ns", "POR", "rosdry", "dzs", "dzss", "zsoil",
+                               "nmeltpoint", "WLM0", "WLM7",
+                               "soilbotflx")}
+    soil_p["pressure"] = pressure
+    soil_p["nsoilcols"] = p["ncols"]
+    soil = soilforlake(soil, soil_p,
+                       ice["Tsoil2"], dt)
     ice["l1"] = ice["l1"] + ice["dhi"]
     out = dict(state)
+    out["soil"] = soil
     out["ice"] = ice
     out["water"] = dict(state["water"])
     out["water"]["Tsurf_prev"] = r["Tsurf3"]
