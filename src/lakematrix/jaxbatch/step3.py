@@ -168,3 +168,13 @@ def step_case3_jax(state, params, rows, nstep, first=True):
     out["water"]["surftyp_prev"] = surftyp
     out["water"]["h1"] = jnp.zeros_like(state["water"]["h1"])
     return out
+
+
+def run_case3_jax(params, rows, nsteps, state, nstep0=1):
+    """Run ``nsteps`` synthetic case-3 steps (Python loop)."""
+    nsteps = int(nsteps)
+    if nsteps < 1:
+        raise ValueError("nsteps must be >= 1")
+    for n in range(nsteps):
+        state = step_case3_jax(state, params, rows, nstep0 + n)
+    return state
