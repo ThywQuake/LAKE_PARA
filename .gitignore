@@ -1,5 +1,6 @@
 # Python
 .venv/
+.venv-gpu/
 .venv-linux/
 __pycache__/
 *.pyc
@@ -21,3 +22,10 @@ __pycache__/
 .DS_Store
 .uvcache/
 /scratch/
+
+# Validation run outputs (tools/validate; regenerated on the cluster)
+/validation/
+/validation-*/
+/gpu-validate-*.out
+/gpu-probe-*.out
+/scratch-cluster/
