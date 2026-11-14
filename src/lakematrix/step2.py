@@ -537,6 +537,10 @@ def step_any(ss, params, grid, rows, nstep, l=0, nstep0=1):
         st.E[l] = r["E1"]; st.eps[l] = r["eps1"]; st.lamw[l] = r["lamw"]
         ss.Elatent = r["Elatent"]; ss.soil.dhwfsoil = r["dhwfsoil"]
         st.layer_case[l] = 2
+        if int(st.flag_snow[l]) == 0 and ss.ice is not None:
+            # No snow pack left: the next snowfall must rebuild the initial
+            # snow layers (SNOW_COND_HEAT_COEF), otherwise dz stays 0.
+            ss.ice.flag_snow_init = 1
         if st.l1[l] <= 0.0:
             st.l1[l] = 0.0; st.ls1[l] = 0.0; st.hs1[l] = 0.0
             st.snowmass[l] = 0.0; st.flag_snow[l] = 0
