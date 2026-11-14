@@ -73,8 +73,13 @@ def main():
 
     fi = np.where(ice > 0)[0]
     fr = np.where(ice_ref > 0)[0]
-    freeze = abs(days[fi[0]] - days[fr[0]]) if len(fi) and len(fr) else np.nan
-    breakup = abs(days[fi[-1]] - days[fr[-1]]) if len(fi) and len(fr) else np.nan
+    if len(fi) and len(fr):
+        freeze = abs(days[fi[0]] - days[fr[0]])
+        breakup = abs(days[fi[-1]] - days[fr[-1]])
+    elif len(fi) or len(fr):    # only one of the two ever froze
+        freeze = breakup = np.inf
+    else:                       # neither froze: phenology agrees
+        freeze = breakup = 0.0
 
     print(f"days {days[0]:.2f}..{days[-1]:.2f}  n={n}")
     print(f"pointwise max   {point:.3f} K   (criterion 5.0)")
@@ -85,7 +90,7 @@ def main():
     print(f"snow thickness  {snow_err:.3f} m   (criterion 0.3)")
     print(f"freeze/break    {freeze:.2f} / {breakup:.2f} days (criterion 7)")
     ok = (point <= 5.0 and bias <= 0.5 and month <= 1.5 and ice_err <= 0.3
-          and snow_err <= 0.3 and np.nanmax([freeze, breakup]) <= 7.0)
+          and snow_err <= 0.3 and max(freeze, breakup) <= 7.0)
     print("PASS" if ok else "FAIL")
 
 
